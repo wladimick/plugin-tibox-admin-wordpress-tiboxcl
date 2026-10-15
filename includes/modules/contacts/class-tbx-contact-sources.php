@@ -149,6 +149,13 @@ final class TBX_Contact_Sources
         if (!is_array($r)) {
             return false;
         }
+        // Entradas automáticas, incompletas o marcadas como spam de WPForms
+        // nunca deben figurar como consultas comerciales confirmadas.
+        if ($source === self::WPFORMS &&
+            ((string) ($r['type'] ?? '') !== 'entry' ||
+             in_array((string) ($r['status'] ?? ''), ['spam', 'trash'], true))) {
+            return false;
+        }
         if ($source === self::LANDINGS) {
             $date = self::safe_text($r['created_at'] ?? '', 25);
             $data = [
@@ -190,7 +197,7 @@ final class TBX_Contact_Sources
             'created_at' => $date ?: current_time('mysql', true),
             'origin' => 'wpforms',
             'form_id' => (string) $form_id,
-            'form_name' => $form_id ? get_the_title($form_id) : 'WPForms',
+            'form_name' => $form_id ? self::safe_text(get_the_title($form_id), 190) : 'WPForms',
             'name' => $contact['name'],
             'email' => $contact['email'],
             'phone' => $contact['phone'],
@@ -227,11 +234,13 @@ final class TBX_Contact_Sources
         }
         $src = self::table($source);
         $pk = $source === self::WPFORMS ? 'entry_id' : 'id';
+        $valid = $source === self::WPFORMS
+            ? " AND s.type = 'entry' AND s.status NOT IN ('spam','trash')" : '';
         $sql = 'SELECT COUNT(*) FROM ' . $src . ' s LEFT JOIN ' . TBX_Contacts::table() .
             ' c ON c.source_plugin = %s AND c.legacy_id = s.' . $pk .
             ' LEFT JOIN ' . TBX_Contacts::suppressed_table() .
             ' d ON d.source_plugin = %s AND d.legacy_id = s.' . $pk .
-            ' WHERE c.id IS NULL AND d.legacy_id IS NULL';
+            ' WHERE c.id IS NULL AND d.legacy_id IS NULL' . $valid;
         return (int) $wpdb->get_var($wpdb->prepare($sql, $source, $source));
     }
 
@@ -282,12 +291,15 @@ final class TBX_Contact_Sources
         }
         global $wpdb;
         $pk = $source === self::WPFORMS ? 'entry_id' : 'id';
+        $valid = $source === self::WPFORMS
+            ? " AND s.type = 'entry' AND s.status NOT IN ('spam','trash')" : '';
         $sql = 'SELECT s.' . $pk . ' FROM ' . self::table($source) .
             ' s LEFT JOIN ' . TBX_Contacts::table() .
             ' c ON c.source_plugin = %s AND c.legacy_id = s.' . $pk .
             ' LEFT JOIN ' . TBX_Contacts::suppressed_table() .
             ' d ON d.source_plugin = %s AND d.legacy_id = s.' . $pk .
-            ' WHERE c.id IS NULL AND d.legacy_id IS NULL ORDER BY s.' . $pk . ' ASC LIMIT %d';
+            ' WHERE c.id IS NULL AND d.legacy_id IS NULL' . $valid .
+            ' ORDER BY s.' . $pk . ' ASC LIMIT %d';
         $ids = $wpdb->get_col($wpdb->prepare($sql, $source, $source, self::LIMIT));
         $done = 0;
         $failed = 0;
