@@ -1,0 +1,259 @@
+/* =========================
+   AJUSTES RÁPIDOS
+   ========================= */
+.tbx-hero-lite{
+    --tbx-hero-height: 88vh;
+    --tbx-hero-bg: #06152f;
+    --tbx-hero-title: #2f8cff;
+    --tbx-hero-text: #ffffff;
+    --tbx-hero-text-width: 860px;
+    --tbx-overlay-left: rgba(2, 10, 24, 0.78);
+    --tbx-overlay-middle: rgba(2, 10, 24, 0.34);
+    --tbx-overlay-right: rgba(2, 10, 24, 0.46);
+    --tbx-overlay-glow: rgba(43, 136, 255, 0.20);
+    --tbx-btn-bg: #ff8f1f;
+    --tbx-btn-color: #ffffff;
+    --tbx-arrow-size: 48px;
+    --tbx-arrow-border: rgba(255, 255, 255, 0.70);
+    --tbx-arrow-bg: rgba(255, 255, 255, 0.06);
+    --tbx-dot-color: rgba(255, 255, 255, 0.35);
+    --tbx-dot-active: #2f8cff;
+    --tbx-inner-width: min(1200px, 92%);
+    --tbx-content-max: 850px;
+}
+
+/* =========================
+   BASE
+   ========================= */
+.tbx-hero-lite{
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    min-height: 500px;
+    height: var(--tbx-hero-height);
+    background: var(--tbx-hero-bg);
+    isolation: isolate;
+}
+
+.tbx-hero-lite *,
+.tbx-hero-lite *::before,
+.tbx-hero-lite *::after{
+    box-sizing: border-box;
+}
+
+.tbx-hero-lite__slide{
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity .6s ease, visibility .6s ease;
+    background-color: var(--tbx-hero-bg);
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+}
+
+/* Cuando el JS ya controla el slider */
+.tbx-hero-lite__slide.is-active{
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+/* Antes de que el JS esté listo, en desktop mostramos el primer slide desktop */
+.tbx-hero-lite:not(.is-ready) .tbx-hero-lite__slide.is-initial-desktop{
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+.tbx-hero-lite__overlay{
+    position: absolute;
+    z-index: 1;
+}
+
+.tbx-hero-lite__inner{
+    position: relative;
+    z-index: 2;
+    width: var(--tbx-inner-width);
+    height: 100%;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 120px 20px 110px;
+}
+
+.tbx-hero-lite__content{
+    max-width: var(--tbx-content-max);
+}
+
+.tbx-hero-lite__title{font-size: 60px;font-weight: 600;line-height: 54px;text-wrap: balance;background: linear-gradient(90deg,#00a5ff,#0d32cb,#00a5ff,#00d7ff,#004cff,#00a5ff);background-size: 200% auto;color: transparent;background-clip: text;-webkit-background-clip: text;animation: shine 7s linear infinite}
+
+.tbx-hero-lite__text{
+        font-size: 30px;
+    font-weight: 400;    color: #ffffff;
+    text-shadow: 0px 0px 10px rgba(0, 0, 0, 0.3);
+}
+
+.tbx-hero-lite__btn{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 24px;
+    padding: 14px 24px;
+    border-radius: 999px;
+    background: var(--tbx-btn-bg);
+    color: var(--tbx-btn-color);
+    text-decoration: none;
+    font-weight: 700;
+    transition: transform .2s ease, filter .2s ease;
+}
+
+.tbx-hero-lite__btn:hover{
+    transform: translateY(-1px);
+    filter: brightness(1.04);
+}
+
+.tbx-hero-lite__nav{
+    position: absolute;
+    left: 28px;
+    bottom: 28px;
+    z-index: 3;
+    display: flex;
+    gap: 12px;
+}
+.tbx-hero-lite__arrow:focus,
+.tbx-hero-lite__arrow{
+    width: var(--tbx-arrow-size);
+    height: var(--tbx-arrow-size);
+    border-radius: 50%;
+    border: 1px solid var(--tbx-arrow-border);
+    background: var(--tbx-arrow-bg);
+    color: #fff;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    line-height: 1;
+    transition: background .2s ease, transform .2s ease, border-color .2s ease;
+}
+
+.tbx-hero-lite__arrow:hover{
+    background: rgba(255,255,255,.14);
+    border-color: #ffffff;
+    transform: translateY(-1px);
+}
+
+.tbx-hero-lite__dots{
+    position: absolute;
+    left: 50%;
+    bottom: 38px;
+    transform: translateX(-50%);
+    z-index: 3;
+    display: flex;
+    gap: 10px;
+}
+
+.tbx-hero-lite__dot{
+    width: 10px;
+    height: 10px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--tbx-dot-color);
+    cursor: pointer;
+    transition: transform .2s ease, background .2s ease;
+}
+
+.tbx-hero-lite__dot.is-active{
+    background: var(--tbx-dot-active);
+    transform: scale(1.15);
+}
+
+/* =========================
+   TABLET
+   ========================= */
+@media (max-width: 1024px){
+    .tbx-hero-lite__inner{
+        padding: 110px 20px 95px;
+    }
+    .tbx-hero-lite__title{
+    font-size: 51px;
+        font-weight: 600;
+        line-height: 53px;
+        
+    }
+    
+    .tbx-hero-lite__text{
+        font-size: 24px;
+        font-weight: 400;
+    }
+    .tbx-hero-lite__nav{
+        left: 20px;
+        bottom: 20px;
+    }
+
+    .tbx-hero-lite__dots{
+        bottom: 28px;
+    }
+}
+
+/* =========================
+   MOBILE
+   OJO: si cambias el breakpoint en shortcode,
+   cambia también este 767px
+   ========================= */
+@media (max-width: 767px){
+    .tbx-hero-lite{
+        min-height: 460px;
+        height: 72vh;
+    }
+
+    /* Antes de que cargue el JS, en mobile ocultamos el desktop inicial */
+    .tbx-hero-lite:not(.is-ready) .tbx-hero-lite__slide.is-initial-desktop{
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+    }
+
+    /* Antes de que cargue el JS, en mobile mostramos el slide inicial mobile */
+    .tbx-hero-lite:not(.is-ready) .tbx-hero-lite__slide.is-initial-mobile{
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+    }
+
+    .tbx-hero-lite__inner{
+        width: min(94%, 94%);
+        padding: 100px 14px 86px;
+    }
+
+    .tbx-hero-lite__title{
+        font-size: 31px;
+        line-height: 33px;
+    }
+
+    .tbx-hero-lite__text{
+        font-size: 20px;
+        font-weight: 400;
+    }
+
+    .tbx-hero-lite__nav{
+        left: 16px;
+        bottom: 16px;
+    }
+
+    .tbx-hero-lite__arrow:focus,
+    .tbx-hero-lite__arrow{
+        width: 42px;
+        height: 42px;
+        font-size: 20px;
+    }
+
+    .tbx-hero-lite__dots{
+        bottom: 22px;
+    }
+}
