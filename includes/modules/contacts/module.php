@@ -325,6 +325,7 @@ final class TBX_Contacts
         echo '</div>';
 
         TBX_Native_Contacts::render_settings();
+        TBX_Native_Contacts::render_wa_settings();
 
         [$where, $params, $type, $search, $device] = self::filters();
         $per_page = 50;
