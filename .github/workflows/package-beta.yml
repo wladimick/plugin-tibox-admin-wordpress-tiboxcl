@@ -56,4 +56,5 @@ jobs:
               --title "TIBOX Admin 1.7 beta — SOLO PRUEBAS" \
               --prerelease \
               --notes "Paquete de desarrollo para staging de Prodata y TIBOX. Incluye Leads, Actividad, Contactos, migración, formulario nativo, referencias WhatsApp y Web Vitals opcional. No ha sido validado funcionalmente en WordPress real. Respaldar antes, mantener TIBOX Leads activo en Prodata y revisar las opciones de módulos."
+          fi
           gh release view "$TAG" --json url,assets
