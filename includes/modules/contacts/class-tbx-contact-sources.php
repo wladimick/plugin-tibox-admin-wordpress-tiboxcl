@@ -211,9 +211,9 @@ final class TBX_Contact_Sources
         if ($contact['email'] !== '') {
             $dupe = $wpdb->get_var($wpdb->prepare(
                 'SELECT id FROM ' . TBX_Contacts::table() .
-                ' WHERE source_plugin = %s AND type = %s AND email = %s ' .
+                ' WHERE source_plugin IN (%s,%s) AND type = %s AND email = %s ' .
                 'AND created_at BETWEEN %s AND %s LIMIT 1',
-                'tibox-leads', 'form', $contact['email'],
+                'tibox-leads', 'tibox-admin-native', 'form', $contact['email'],
                 gmdate('Y-m-d H:i:s', strtotime($date . ' UTC') - 120),
                 gmdate('Y-m-d H:i:s', strtotime($date . ' UTC') + 120)
             ));
