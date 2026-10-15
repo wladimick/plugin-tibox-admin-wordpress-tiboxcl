@@ -1,0 +1,22 @@
+/* CTA WhatsApp autónomo de TIBOX Admin. Se carga solo si se habilita. */
+.tbx-native-wa {
+  position: fixed; bottom: 20px; z-index: 99990;
+  display: inline-flex; gap: 10px; align-items: center; justify-content: center;
+  min-height: 54px; min-width: 54px; padding: 0 18px;
+  border-radius: 28px; background: #087d48; color: #fff !important;
+  text-decoration: none !important; font: 600 14px/1.4 system-ui, sans-serif;
+  box-shadow: 0 6px 22px rgba(0,0,0,.25); transition: transform .15s, background .15s;
+}
+.tbx-native-wa--right { right: 20px; }
+.tbx-native-wa--left { left: 20px; }
+.tbx-native-wa:hover { background: #07663b; transform: translateY(-2px); }
+.tbx-native-wa:focus-visible { outline: 3px solid #fff; outline-offset: 3px; box-shadow: 0 0 0 6px #087d48; }
+.tbx-native-wa__icon { font-size: 29px; line-height: 1; }
+@media (max-width: 767px) {
+  .tbx-native-wa { bottom: 16px; width: 54px; height: 54px; padding: 0; }
+  .tbx-native-wa--right { right: 16px; }
+  .tbx-native-wa--left { left: 16px; }
+  .tbx-native-wa__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+}
+@media (prefers-reduced-motion: reduce) { .tbx-native-wa { transition: none; } }
+@media print { .tbx-native-wa { display: none; } }

@@ -16,6 +16,18 @@ final class TBX_Native_Contacts
     private const SEQUENCE_VERSION = '1.0.0';
     private const SEQUENCE_OPTION = 'tbx_native_contact_sequence_version';
     private static array $seen = [];
+    public const WA_OPTION = 'tbx_admin_contact_whatsapp';
+    private static function whatsapp_settings(): array
+    {
+        $saved = get_option(self::WA_OPTION, []);
+        $defaults = [
+            'enabled' => '0', 'number' => '', 'label' => 'Cotizar por WhatsApp',
+            'message' => 'Hola, estoy viendo {pagina} en su sitio web y me gustaría recibir una cotización.',
+            'side' => 'right',
+        ];
+        return array_merge($defaults, is_array($saved) ? $saved : []);
+    }
+
 
     public static function sequence_table(): string
     {
@@ -43,6 +55,7 @@ final class TBX_Native_Contacts
     {
         add_action('init', [self::class, 'install']);
         add_action('admin_post_tbx_contacts_native_settings', [self::class, 'save_settings']);
+        add_action('admin_post_tbx_contacts_wa_settings', [self::class, 'save_wa_settings']);
         add_action('wpforms_process_complete', [self::class, 'wpforms'], 20, 4);
         add_action('elementor_pro/forms/new_record', [self::class, 'elementor'], 20, 2);
         add_action('wpcf7_mail_sent', [self::class, 'contact_form_7'], 20, 1);
@@ -328,6 +341,26 @@ final class TBX_Native_Contacts
             (string) filemtime($file),
             ['in_footer' => true, 'strategy' => 'defer']
         );
+
+        $wa = self::whatsapp_settings();
+        if ($wa['enabled'] === '1' && preg_match('/^[0-9]{8,15}$/', (string) $wa['number'])) {
+            wp_enqueue_style(
+                'tbx-native-contact-button',
+                TBX_ADMIN_URL . 'assets/tibox-native-contact-button.css',
+                [],
+                TBX_ADMIN_VERSION
+            );
+            wp_add_inline_script(
+                'tbx-native-contact-clicks',
+                'window.TBX_CONTACT_WA_BUTTON=' . wp_json_encode([
+                    'number' => $wa['number'],
+                    'label' => $wa['label'],
+                    'message' => $wa['message'],
+                    'side' => $wa['side'],
+                ]) . ';',
+                'before'
+            );
+        }
         wp_add_inline_script(
             'tbx-native-contact-clicks',
             'window.TBX_CONTACT_ENDPOINT=' . wp_json_encode(esc_url_raw(rest_url('tibox/v1/contact-event'))) . ';',
@@ -412,6 +445,63 @@ final class TBX_Native_Contacts
             ...TBX_Analytics_Context::classify($ua),
         ];
         return new WP_REST_Response(['ok' => self::insert_native($data)], 200);
+    }
+
+
+    public static function save_wa_settings(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die('Sin permisos.', '', ['response' => 403]);
+        }
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            wp_die('Método no permitido.', '', ['response' => 405]);
+        }
+        check_admin_referer('tbx_contacts_wa_settings');
+        $in = isset($_POST['tbx_wa']) && is_array($_POST['tbx_wa']) ? wp_unslash($_POST['tbx_wa']) : [];
+        $number = preg_replace('/\\D/', '', (string) ($in['number'] ?? ''));
+        $valid = (bool) preg_match('/^[0-9]{8,15}$/', $number);
+        $config = [
+            'enabled' => !empty($in['enabled']) && $valid ? '1' : '0',
+            'number' => $valid ? $number : '',
+            'label' => self::scalar($in['label'] ?? 'Cotizar por WhatsApp', 80),
+            'message' => mb_substr(sanitize_textarea_field((string) ($in['message'] ?? '')), 0, 300),
+            'side' => ($in['side'] ?? '') === 'left' ? 'left' : 'right',
+        ];
+        update_option(self::WA_OPTION, $config, false);
+        wp_safe_redirect(add_query_arg('wa_saved', $valid ? '1' : '0', TBX_Admin::tab_url('contactos')));
+        exit;
+    }
+
+    public static function render_wa_settings(): void
+    {
+        $wa = self::whatsapp_settings();
+        echo '<div class="tbx-import-card"><h2>Botón flotante de WhatsApp (opcional)</h2>';
+        echo '<p>Reemplaza el botón del plugin anterior sin perder la referencia de seis caracteres. Solo aparece cuando Contactos está en modo nativo y el plugin antiguo ya no está activo.</p>';
+        if (isset($_GET['wa_saved'])) {
+            $ok = sanitize_key(wp_unslash($_GET['wa_saved'])) === '1';
+            echo '<div class="notice notice-' . ($ok ? 'success' : 'warning') .
+                ' inline"><p>' . ($ok ? 'Ajustes del botón guardados.' : 'Revisa el número: debe contener de 8 a 15 dígitos.') .
+                '</p></div>';
+        }
+        echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
+        echo '<input type="hidden" name="action" value="tbx_contacts_wa_settings">';
+        wp_nonce_field('tbx_contacts_wa_settings');
+        echo '<p><label><input type="checkbox" name="tbx_wa[enabled]" value="1"' .
+            checked($wa['enabled'], '1', false) . '> Mostrar botón flotante</label></p>';
+        echo '<p><label>Número (con código de país, solo dígitos)<br><input class="regular-text" type="text" name="tbx_wa[number]" value="' .
+            esc_attr((string) $wa['number']) . '" placeholder="56912345678"></label></p>';
+        echo '<p><label>Etiqueta<br><input class="regular-text" type="text" name="tbx_wa[label]" value="' .
+            esc_attr((string) $wa['label']) . '"></label></p>';
+        echo '<p><label>Mensaje predeterminado<br><textarea class="large-text" rows="3" name="tbx_wa[message]">' .
+            esc_textarea((string) $wa['message']) . '</textarea></label></p>';
+        echo '<p class="tbx-muted">Variables permitidas: {pagina} y {sitio}. La referencia se agrega al abrir WhatsApp si el navegador lo permite.</p>';
+        echo '<p><label>Ubicación <select name="tbx_wa[side]">';
+        foreach (['right' => 'Derecha', 'left' => 'Izquierda'] as $v => $label) {
+            echo '<option value="' . esc_attr($v) . '"' . selected($wa['side'], $v, false) . '>' . esc_html($label) . '</option>';
+        }
+        echo '</select></label></p>';
+        submit_button('Guardar botón WhatsApp', 'secondary', 'submit', false);
+        echo '</form></div>';
     }
 
     public static function save_settings(): void
