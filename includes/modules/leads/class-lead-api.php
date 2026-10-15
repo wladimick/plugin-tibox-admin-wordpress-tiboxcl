@@ -830,6 +830,10 @@ final class TIBOX_Landing_Form_API
                     esc_attr((string) (isset($_GET['landing_id']) ? absint($_GET['landing_id']) : 0)) . '">';
                 echo '<input type="hidden" name="paged" value="' .
                     esc_attr((string) (isset($_GET['paged']) ? max(1, absint($_GET['paged'])) : 1)) . '">';
+                echo '<input type="hidden" name="mes" value="' .
+                    esc_attr((string) (isset($_GET['mes']) ? sanitize_text_field(wp_unslash($_GET['mes'])) : '')) . '">';
+                echo '<input type="hidden" name="buscar" value="' .
+                    esc_attr((string) (isset($_GET['buscar']) ? sanitize_text_field(wp_unslash($_GET['buscar'])) : '')) . '">';
                 echo wp_nonce_field('tbx_admin_delete_lead_' . $id, '_wpnonce', true, false);
                 echo '<button type="submit" class="button-link-delete tbx-leads-delete">Borrar</button>';
                 echo '</form></td>';
