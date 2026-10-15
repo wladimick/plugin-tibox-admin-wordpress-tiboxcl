@@ -89,3 +89,37 @@ La pestaña **Contactos** se activa opcionalmente en **TIBOX Admin → Módulos*
 7. Verificar en staging que los conteos coincidan y que los formularios Elementor, WPForms y Contact Form 7, y los clics WhatsApp, se sigan registrando. Tras pasar las pruebas, repetir en producción.
 
 **Límites de esta entrega:** el módulo Contactos 1.2.0 todavía **no sustituye** al capturador original. Su valor inicial es importar, visualizar y sincronizar el historial en el *mismo WordPress*. La captura nativa de formularios (sin depender de Tibox Leads) queda pendiente en la fase posterior. Tampoco se trasladan registros de un WordPress a otro ni se agregan los clics históricos a las métricas diarias del módulo Actividad. No desinstalar Tibox Leads hasta terminar esa fase.
+
+
+## Analítica 1.4.0 — Mediciones por dispositivos y comportamiento (beta)
+
+Esta rama depende del módulo Contactos en PR #3 y del rediseño de leads en PR #1.
+
+### Datos nuevos en Actividad
+
+- **Dispositivos:** clasificación aproximada a partir del User-Agent recibido (móvil, escritorio, tablet), navegador (Chrome, Safari, Firefox, Edge, Opera, Samsung, Other) y SO (Android, iOS, Windows, macOS, Linux, ChromeOS, Other). La nueva tabla **no guarda User-Agent completo, IP, cookie de visitante ni fingerprint**.
+- **Histórico:** no modifica la tabla anterior {prefix}tibox_activity. Guarda datos nuevos en {prefix}tbx_activity_insights, agregados por día, evento, página, dispositivo, navegador, SO y campañas saneadas.
+- **Filtros:** dispositivo, período 7/30/90 días y página. Los resultados muestran *eventos*, no visitantes únicos.
+- **Embudo:** por página y dispositivo: vistas, CTA, formulario iniciado, envío confirmado observado (solo AJAX o hooks existentes), WhatsApp, errores y ratio orientativo.
+- **Comportamiento:** clic en descarga, clic externo, transiciones anónimas entre rutas, clics repetidos (3 en 1,7 segundos) y minutos de interacción aproximados en bloques de 15 segundos.
+- **Campañas:** fuente, medio y campaña UTM; se conservan en sessionStorage en la pestaña, sin identificador personal. Si corresponde, utiliza el dominio referente externo. No guarda URLs de referencia completas ni otros parámetros.
+- **Exclusión:** WordPress no encola el rastreador a visitantes conectados con una cuenta WordPress. El script respeta Global Privacy Control y window.TBX_ANALYTICS_ALLOWED === false si este valor se configura **antes** de cargar el JS.
+- **Retención:** 400 días, igual que la tabla histórica.
+- **Privacidad:** no se guardan IDs de sesión, IP ni User-Agent sin procesar. Las estimaciones por navegador pueden ser incompletas o imprecisas.
+- **GTM:** los nuevos eventos solo se envían al sistema local. Los eventos legacy a GTM se mantienen sin cambios, incluido wpforms_submit. Validar convivencia con el plugin anterior y Tag Assistant antes de producir.
+
+### Formularios y contactos
+
+- Detección del primer input en WPForms, Elementor, Contact Form 7 y formularios HTML con el atributo data-tbx-track-form. El éxito de formulario solo se cuenta cuando existe confirmación de WPForms/Elementor por AJAX o evento wpcf7mailsent. El envío HTML normal no se declara exitoso sin callback.
+- El ratio envíos/inicios **no es tasa de usuarios únicos** y no prueba abandono individual; puede superar el 100 %.
+- En **Contactos**, los registros provenientes de Tibox Leads guardan dispositivo/navegador/SO derivados de su User-Agent histórico. No se copia el User-Agent completo. Si no se puede inferir el dispositivo, queda como desconocido. Se agregó filtro por dispositivo.
+
+### Despliegue seguro
+
+1. Validar CI, revisar PR #4 y realizar respaldo completo de archivos y BD.
+2. En Prodata staging, activar **solo** Actividad y Contactos en TIBOX Admin, conservando TIBOX Leads 1.0.0 como capturador individual.
+3. Probar clics, páginas, campañas, formularios y referencias reales. Comprobar que las estadísticas admin no se registren.
+4. Comprobar que las tablas históricas sigan sin cambios y que las conversiones GTM/GA4 no se dupliquen.
+5. Fusionar e instalar en producción solo cuando se terminen pruebas funcionales.
+
+**Aún pendiente:** pruebas con WordPress real, captura nativa de todos los formularios en Contactos sin depender del plugin antiguo, Web Vitals (LCP/CLS/INP) y configuración del consentimiento según el sitio.

@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
 
 final class TBX_Contacts
 {
-    public const DB_VERSION = '1.0.0';
+    public const DB_VERSION = '1.1.0';
     private const DB_OPTION = 'tbx_contacts_db_version';
     private const LEGACY_SOURCE = 'tibox-leads';
     private const BATCH_SIZE = 100;
@@ -95,6 +95,9 @@ final class TBX_Contacts
             referrer varchar(500) NOT NULL DEFAULT '',
             landing_page varchar(500) NOT NULL DEFAULT '',
             mail_status varchar(20) NOT NULL DEFAULT '',
+            device varchar(12) NOT NULL DEFAULT 'unknown',
+            browser varchar(20) NOT NULL DEFAULT 'Other',
+            os varchar(20) NOT NULL DEFAULT 'Other',
             PRIMARY KEY  (id),
             UNIQUE KEY source_record (source_plugin,legacy_id),
             KEY created_at (created_at),
@@ -140,6 +143,8 @@ final class TBX_Contacts
             'source_plugin' => self::LEGACY_SOURCE,
             'legacy_id' => $source_id,
             'imported_at' => current_time('mysql', true),
+            // Derivado del User-Agent del plugin anterior, sin copiar el dato original.
+            ...TBX_Analytics_Context::classify((string) ($row['user_agent'] ?? '')),
         ];
         foreach (self::FIELDS as $field) {
             $data[$field] = (string) ($row[$field] ?? '');
@@ -228,18 +233,26 @@ final class TBX_Contacts
             $type = '';
         }
         $search = isset($_GET['s']) ? mb_substr(sanitize_text_field(wp_unslash($_GET['s'])), 0, 120) : '';
+        $device = isset($_GET['dispositivo']) ? sanitize_key(wp_unslash($_GET['dispositivo'])) : '';
+        if (!in_array($device, ['', 'mobile', 'desktop', 'tablet', 'unknown'], true)) {
+            $device = '';
+        }
         $parts = [];
         $params = [];
         if ($type !== '') {
             $parts[] = 'type = %s';
             $params[] = $type;
         }
+        if ($device !== '') {
+            $parts[] = 'device = %s';
+            $params[] = $device;
+        }
         if ($search !== '') {
             $like = '%' . $wpdb->esc_like($search) . '%';
             $parts[] = '(name LIKE %s OR email LIKE %s OR phone LIKE %s OR ref_code LIKE %s OR form_name LIKE %s)';
             $params = array_merge($params, array_fill(0, 5, $like));
         }
-        return [$parts ? ' WHERE ' . implode(' AND ', $parts) : '', $params, $type, $search];
+        return [$parts ? ' WHERE ' . implode(' AND ', $parts) : '', $params, $type, $search, $device];
     }
 
     public static function render(): void
@@ -311,7 +324,7 @@ final class TBX_Contacts
         }
         echo '</div>';
 
-        [$where, $params, $type, $search] = self::filters();
+        [$where, $params, $type, $search, $device] = self::filters();
         $per_page = 50;
         $page = isset($_GET['paged']) ? max(1, absint(wp_unslash($_GET['paged']))) : 1;
         $count_sql = 'SELECT COUNT(*) FROM ' . $table . $where;
@@ -331,6 +344,11 @@ final class TBX_Contacts
             echo '<option value="' . esc_attr($k) . '"' . selected($type, $k, false) . '>' . esc_html($label) . '</option>';
         }
         echo '</select></label>';
+        echo '<label>Dispositivo <select name="dispositivo">';
+        foreach (['' => 'Todos', 'mobile' => 'Móvil', 'desktop' => 'Escritorio', 'tablet' => 'Tablet', 'unknown' => 'Desconocido'] as $v => $name) {
+            echo '<option value="' . esc_attr($v) . '"' . selected($device, $v, false) . '>' . esc_html($name) . '</option>';
+        }
+        echo '</select></label>';
         echo '<label>Buscar <input name="s" type="search" value="' . esc_attr($search) .
             '" placeholder="Nombre, correo, referencia…"></label>';
         submit_button('Filtrar', 'secondary', '', false);
@@ -342,7 +360,7 @@ final class TBX_Contacts
             return;
         }
         echo '<div class="tbx-leads-scroll"><table class="widefat striped tbx-table tbx-leads-table"><thead><tr>';
-        echo '<th>Fecha</th><th>Canal</th><th>Contacto</th><th>Dónde ocurrió</th><th>Origen</th><th>Detalles</th>';
+        echo '<th>Fecha</th><th>Canal</th><th>Contacto</th><th>Dónde ocurrió</th><th>Dispositivo</th><th>Origen</th><th>Detalles</th>';
         echo '</tr></thead><tbody>';
         foreach ($rows as $r) {
             $kind = $types[$r['type']] ?? $r['type'];
@@ -370,6 +388,9 @@ final class TBX_Contacts
                     '" target="_blank" rel="noopener noreferrer">' . esc_html($page_path ?: $r['page_url']) . '</a>';
             }
             echo '<small>' . esc_html($r['form_name'] ?: $r['location']) . '</small></td>';
+            $devices = ['mobile' => 'Móvil', 'desktop' => 'Escritorio', 'tablet' => 'Tablet', 'unknown' => 'Desconocido'];
+            echo '<td>' . esc_html($devices[$r['device']] ?? 'Desconocido') . '<small style="display:block">' .
+                esc_html($r['browser'] . ' · ' . $r['os']) . '</small></td>';
             echo '<td>' . esc_html($r['source'] ?: '(directo)') .
                 '<small style="display:block">' . esc_html($r['medium'] ?: '(ninguno)') . '</small></td>';
             echo '<td class="tbx-leads-details"><details><summary>Ver detalles</summary><div class="tbx-leads-details-body">';
@@ -397,7 +418,7 @@ final class TBX_Contacts
         echo '</tbody></table></div>';
         $pages = (int) ceil($total / $per_page);
         if ($pages > 1) {
-            $args = ['page' => 'tibox-admin-contactos', 'tipo' => $type, 's' => $search];
+            $args = ['page' => 'tibox-admin-contactos', 'tipo' => $type, 's' => $search, 'dispositivo' => $device];
             $links = paginate_links([
                 'base' => add_query_arg('paged', '%#%', add_query_arg($args, admin_url('admin.php'))),
                 'current' => $page,
