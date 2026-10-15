@@ -103,6 +103,14 @@
   /* Para que la landing registre form_start / form_submit / form_error */
   window.tbxLog = log;
   log('page_view', {});
+  /* Ruta previa solo en la pestaña actual; SIN cookie ni identificador de sesión. */
+  try {
+    var previousPath = sessionStorage.getItem('tbx_prev_path') || '';
+    if (previousPath && previousPath !== path && previousPath[0] === '/') {
+      log('navigation_step', { link_text: previousPath.slice(0, 120) });
+    }
+    sessionStorage.setItem('tbx_prev_path', path.slice(0, 120));
+  } catch (_) {}
 
   function push(event, data) {
     var payload = { event: event, landing_path: path, page_type: isLanding ? 'landing' : 'sitio' };
@@ -167,6 +175,22 @@
     if (el.matches(CTA_SELECTOR)) {
       push('cta_click', { cta_text: text, link_url: href, click_location: where });
     }
+  }, true);
+
+  /* ---------- Clics repetidos en controles: señal orientativa de fricción ---------- */
+  var clickHistory = new WeakMap();
+  document.addEventListener('click', function (e) {
+    var el = e.target.closest ? e.target.closest('button, a[href]') : null;
+    if (!el || el.closest('form') || el.hasAttribute('disabled')) return;
+    var now = Date.now();
+    var state = clickHistory.get(el) || { at: 0, n: 0 };
+    state.n = now - state.at <= 1700 ? state.n + 1 : 1;
+    state.at = now;
+    if (state.n === 3) {
+      var label = clean(el.getAttribute('data-track') || el.textContent || el.getAttribute('aria-label'), 90) || 'Control';
+      log('repeated_click', { link_text: label, click_location: locationOf(el) });
+    }
+    clickHistory.set(el, state);
   }, true);
 
   /* ---------- Archivos y enlaces externos (solo resumen local, sin GTM adicional) ---------- */
