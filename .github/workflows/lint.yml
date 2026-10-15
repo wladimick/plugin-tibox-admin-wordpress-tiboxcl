@@ -36,3 +36,5 @@ jobs:
         run: node tests/native-clicks-smoke.cjs
       - name: Verify native click REST ingestion and security checks
         run: php tests/native-click-endpoint-smoke.php
+      - name: Verify optional floating WhatsApp button and reference
+        run: node tests/native-wa-button-smoke.cjs
