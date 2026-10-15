@@ -39,6 +39,7 @@ class FakeDB {
 }
 $wpdb = new FakeDB();
 function add_action(...$args): void {}
+function add_filter(...$args) {}
 function get_option($k, $default = null) {
     return match($k) {
         'tbx_contacts_native_enabled' => '1',
