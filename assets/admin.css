@@ -82,3 +82,9 @@ a.tbx-card:hover { border-color: var(--tbx-sky); transform: translateY(-2px); co
   .tbx-leads-table { min-width: 820px; }
   .tbx-leads-scroll { margin-left: 0; }
 }
+
+/* Contactos: vista previa de importación histórica. */
+.tbx-import-card { margin: 16px 0 26px; padding: 18px 20px; border: 1px solid var(--tbx-line); border-radius: 12px; background: #fff; }
+.tbx-import-card h2 { margin: 0 0 12px; color: var(--tbx-navy); font-size: 16px; }
+.tbx-import-card form { margin: 14px 0; }
+.tbx-import-card .notice { margin: 10px 0; }
