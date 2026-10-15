@@ -338,7 +338,8 @@ final class TBX_Contacts
 
         $source = (string) $row['source_plugin'];
         $legacy_id = (int) $row['legacy_id'];
-        if ($source === self::LEGACY_SOURCE && $legacy_id > 0) {
+        if (in_array($source, [self::LEGACY_SOURCE, 'tibox-landing', 'wpforms-history'], true) &&
+            $legacy_id > 0) {
             // Si el índice de borrados falla, no eliminamos la copia: evita reimportación accidental.
             $marker = $wpdb->query($wpdb->prepare(
                 'INSERT INTO ' . self::suppressed_table() .
