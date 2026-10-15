@@ -90,11 +90,11 @@ add_action('admin_post_tbx_export_leads', function (): void {
 
     global $wpdb;
     $table = $wpdb->prefix . 'tibox_landing_leads';
-    $landing = isset($_GET['landing_id']) ? absint($_GET['landing_id']) : 0;
-
-    $rows = $landing > 0
-        ? $wpdb->get_results($wpdb->prepare("SELECT * FROM {$table} WHERE landing_id = %d ORDER BY created_at DESC", $landing), ARRAY_A)
-        : $wpdb->get_results("SELECT * FROM {$table} ORDER BY created_at DESC", ARRAY_A);
+    [$where, $filter_args] = TIBOX_Landing_Form_API::admin_filter_sql();
+    $sql = "SELECT * FROM {$table}{$where} ORDER BY created_at DESC, id DESC";
+    $rows = $filter_args
+        ? $wpdb->get_results($wpdb->prepare($sql, ...$filter_args), ARRAY_A)
+        : $wpdb->get_results($sql, ARRAY_A);
 
     nocache_headers();
     header('Content-Type: text/csv; charset=utf-8');
@@ -153,6 +153,14 @@ add_action('admin_post_tbx_admin_delete_lead', function (): void {
     }
     if (!empty($_POST['paged'])) {
         $args['paged'] = max(1, absint(wp_unslash($_POST['paged'])));
+    }
+    $month = isset($_POST['mes']) ? sanitize_text_field(wp_unslash($_POST['mes'])) : '';
+    if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
+        $args['mes'] = $month;
+    }
+    $search = isset($_POST['buscar']) ? sanitize_text_field(wp_unslash($_POST['buscar'])) : '';
+    if ($search !== '') {
+        $args['buscar'] = mb_substr($search, 0, 120);
     }
 
     wp_safe_redirect(add_query_arg($args, TBX_Admin::tab_url('leads')));
