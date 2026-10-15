@@ -8,6 +8,7 @@ const listeners = {};
 const sent = [];
 const timers = [];
 const storage = new Map();
+storage.set('tbx_prev_path', '/inicio/');
 const location = { pathname: '/lp/porticos/', search: '?utm_source=google&utm_medium=cpc&utm_campaign=porticos', host: 'prodata.cl', href: 'https://prodata.cl/lp/porticos/' };
 const document = {
   readyState: 'loading', visibilityState: 'visible', referrer: '',
@@ -37,6 +38,8 @@ assert.equal(window.dataLayer.length, 0, 'page_view own endpoint only');
 for (const fn of listeners.window_pagehide) fn();
 assert.equal(sent.length, 1);
 assert.equal(sent[0].body.events[0].e, 'page_view');
+assert.equal(sent[0].body.events[1].e, 'navigation_step');
+assert.equal(sent[0].body.events[1].t, '/inicio/');
 assert.equal(sent[0].body.campaign.source, 'google');
 assert.equal(sent[0].body.campaign.medium, 'cpc');
 assert.equal(sent[0].body.campaign.campaign, 'porticos');
@@ -47,7 +50,7 @@ assert.equal('user_agent' in sent[0].body, false);
 function anchor(url, label) {
   return {
     textContent: label, hasAttribute: () => false, getAttribute: k => k === 'href' ? url : '',
-    closest: (s) => s === 'a, button' || s === 'a[href]' ? anchorRef : null,
+    closest: (s) => ['a, button', 'a[href]', 'button, a[href]'].includes(s) ? anchorRef : null,
     matches: () => false
   };
 }
@@ -55,10 +58,14 @@ let anchorRef = anchor('https://prodata.cl/brochure.pdf', 'Brochure');
 for (const fn of listeners.click || []) fn({target: anchorRef});
 anchorRef = anchor('https://externo.cl/', 'Enlace externo');
 for (const fn of listeners.click || []) fn({target: anchorRef});
+for (const fn of listeners.click || []) fn({target: anchorRef});
+for (const fn of listeners.click || []) fn({target: anchorRef});
 for (const fn of listeners.window_pagehide) fn();
 const evs = sent[1].body.events.map(x => x.e);
 assert.ok(evs.includes('download_click'));
 assert.ok(evs.includes('outbound_click'));
+assert.ok(evs.includes('repeated_click'));
+assert.equal(storage.get('tbx_prev_path'), '/lp/porticos/');
 assert.equal(window.dataLayer.length, 0, 'new events must not duplicate GTM conversions');
 
 // Respeto explícito a opt-out de consentimiento.
