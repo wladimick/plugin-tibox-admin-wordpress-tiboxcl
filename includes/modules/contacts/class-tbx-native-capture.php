@@ -45,6 +45,35 @@ final class TBX_Native_Contacts
         return function_exists('tbx_leads_insert');
     }
 
+    public static function wa_button_enabled(): bool
+    {
+        $wa = self::whatsapp_settings();
+        return ($wa['enabled'] ?? '') === '1' &&
+            (bool) preg_match('/^[0-9]{8,15}$/', (string) ($wa['number'] ?? ''));
+    }
+
+    /**
+     * TIBOX Admin es dueño del botón, pero mientras TIBOX Leads siga activo
+     * este último registra sus clics, asigna referencias y sincroniza Contactos.
+     * Solo ajusta la configuración efectiva del frontend; NO cambia la opción
+     * que el plugin antiguo tiene guardada en la base de datos.
+     */
+    public static function legacy_whatsapp_frontend($settings)
+    {
+        if (is_admin() || !self::legacy_active() || !self::wa_button_enabled()) {
+            return $settings;
+        }
+        $wa = self::whatsapp_settings();
+        $settings = is_array($settings) ? $settings : [];
+        $settings['wa_on'] = 0; // Evita mostrar dos botones flotantes.
+        $settings['wa_number'] = $wa['number'];
+        $settings['wa_message'] = $wa['message'];
+        $settings['wa_label'] = $wa['label'];
+        $settings['wa_side'] = $wa['side'];
+        $settings['wa_ref'] = 1; // Ref: XXXXXX sigue viniendo del capturador legado.
+        return $settings;
+    }
+
     public static function can_capture(): bool
     {
         // Incluso si se configuró "activo" antes, jamás duplicar el plugin antiguo.
@@ -61,6 +90,8 @@ final class TBX_Native_Contacts
         add_action('wpcf7_mail_sent', [self::class, 'contact_form_7'], 20, 1);
         add_action('rest_api_init', [self::class, 'register_click_route']);
         add_action('wp_enqueue_scripts', [self::class, 'enqueue_clicks']);
+        add_action('wp_enqueue_scripts', [self::class, 'enqueue_wa_button'], 20);
+        add_filter('option_tbx_leads_settings', [self::class, 'legacy_whatsapp_frontend'], 20, 1);
     }
 
     public static function install(): void
@@ -354,28 +385,45 @@ final class TBX_Native_Contacts
             ['in_footer' => true, 'strategy' => 'defer']
         );
 
-        $wa = self::whatsapp_settings();
-        if ($wa['enabled'] === '1' && preg_match('/^[0-9]{8,15}$/', (string) $wa['number'])) {
-            wp_enqueue_style(
-                'tbx-native-contact-button',
-                TBX_ADMIN_URL . 'assets/tibox-native-contact-button.css',
-                [],
-                TBX_ADMIN_VERSION
-            );
-            wp_add_inline_script(
-                'tbx-native-contact-clicks',
-                'window.TBX_CONTACT_WA_BUTTON=' . wp_json_encode([
-                    'number' => $wa['number'],
-                    'label' => $wa['label'],
-                    'message' => $wa['message'],
-                    'side' => $wa['side'],
-                ]) . ';',
-                'before'
-            );
-        }
         wp_add_inline_script(
             'tbx-native-contact-clicks',
             'window.TBX_CONTACT_ENDPOINT=' . wp_json_encode(esc_url_raw(rest_url('tibox/v1/contact-event'))) . ';',
+            'before'
+        );
+    }
+
+    /**
+     * Botón de WhatsApp independiente: funciona con captura nativa apagada
+     * y con TIBOX Leads 1.0.0 activo. Un único botón, un capturador.
+     */
+    public static function enqueue_wa_button(): void
+    {
+        if (!self::wa_button_enabled()) {
+            return;
+        }
+        $wa = self::whatsapp_settings();
+        wp_enqueue_style(
+            'tbx-native-contact-button',
+            TBX_ADMIN_URL . 'assets/tibox-native-contact-button.css',
+            [],
+            TBX_ADMIN_VERSION
+        );
+        $file = TBX_ADMIN_DIR . 'assets/tibox-wa-button.js';
+        wp_enqueue_script(
+            'tbx-independent-wa-button',
+            TBX_ADMIN_URL . 'assets/tibox-wa-button.js',
+            [],
+            (string) filemtime($file),
+            ['in_footer' => true, 'strategy' => 'defer']
+        );
+        wp_add_inline_script(
+            'tbx-independent-wa-button',
+            'window.TBX_CONTACT_WA_BUTTON=' . wp_json_encode([
+                'number' => $wa['number'],
+                'label' => $wa['label'],
+                'message' => $wa['message'],
+                'side' => $wa['side'],
+            ]) . ';',
             'before'
         );
     }
@@ -488,7 +536,12 @@ final class TBX_Native_Contacts
     {
         $wa = self::whatsapp_settings();
         echo '<div class="tbx-import-card"><h2>Botón flotante de WhatsApp (opcional)</h2>';
-        echo '<p>Reemplaza el botón del plugin anterior sin perder la referencia de seis caracteres. Solo aparece cuando Contactos está en modo nativo y el plugin antiguo ya no está activo.</p>';
+        echo '<p>Este botón funciona independientemente de la captura directa de formularios. Puedes activarlo mientras TIBOX Leads sigue instalado: TIBOX Admin muestra un solo botón y TIBOX Leads conserva el registro de clics y las referencias WhatsApp.</p>';
+        if (self::legacy_active()) {
+            echo '<p class="tbx-muted"><strong>Convivencia:</strong> los ajustes del botón se administran aquí; el registro de clics sigue funcionando en el plugin antiguo hasta que migremos completamente la captura.</p>';
+        } elseif (!self::can_capture()) {
+            echo '<p class="tbx-muted"><strong>Atención:</strong> el botón puede abrir WhatsApp, pero sus clics no quedarán registrados individualmente mientras la captura nativa esté desactivada y no exista el plugin antiguo.</p>';
+        }
         if (isset($_GET['wa_saved'])) {
             $ok = sanitize_key(wp_unslash($_GET['wa_saved'])) === '1';
             echo '<div class="notice notice-' . ($ok ? 'success' : 'warning') .
@@ -506,7 +559,7 @@ final class TBX_Native_Contacts
             esc_attr((string) $wa['label']) . '"></label></p>';
         echo '<p><label>Mensaje predeterminado<br><textarea class="large-text" rows="3" name="tbx_wa[message]">' .
             esc_textarea((string) $wa['message']) . '</textarea></label></p>';
-        echo '<p class="tbx-muted">Variables permitidas: {pagina} y {sitio}. La referencia se agrega al abrir WhatsApp si el navegador lo permite.</p>';
+        echo '<p class="tbx-muted">Variables permitidas: {pagina} y {sitio}. Las referencias se agregan cuando hay un capturador de clics activo.</p>';
         echo '<p><label>Ubicación <select name="tbx_wa[side]">';
         foreach (['right' => 'Derecha', 'left' => 'Izquierda'] as $v => $label) {
             echo '<option value="' . esc_attr($v) . '"' . selected($wa['side'], $v, false) . '>' . esc_html($label) . '</option>';
