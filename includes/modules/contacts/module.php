@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
 
 final class TBX_Contacts
 {
-    public const DB_VERSION = '1.1.0';
+    public const DB_VERSION = '1.2.0';
     private const DB_OPTION = 'tbx_contacts_db_version';
     private const LEGACY_SOURCE = 'tibox-leads';
     private const BATCH_SIZE = 100;
@@ -37,6 +37,12 @@ final class TBX_Contacts
         return $wpdb->prefix . 'tbx_leads';
     }
 
+    public static function suppressed_table(): string
+    {
+        global $wpdb;
+        return $wpdb->prefix . 'tbx_admin_contact_deleted';
+    }
+
     private static function exists(string $table): bool
     {
         global $wpdb;
@@ -49,6 +55,8 @@ final class TBX_Contacts
     {
         add_action('init', [self::class, 'install']);
         add_action('admin_post_tbx_contacts_import', [self::class, 'import_action']);
+        add_action('admin_post_tbx_contacts_delete', [self::class, 'delete_action']);
+        add_action('admin_post_tbx_contacts_export', [self::class, 'export_action']);
         // Tibox Leads dispara este hook DESPUÉS de persistir su propio registro.
         add_action('tbx_leads_inserted', [self::class, 'sync_legacy_entry'], 10, 1);
         TBX_Admin::register_tab('contactos', 'Contactos', [self::class, 'render'], 25);
@@ -56,7 +64,8 @@ final class TBX_Contacts
 
     public static function install(): void
     {
-        if (get_option(self::DB_OPTION) === self::DB_VERSION && self::exists(self::table())) {
+        if (get_option(self::DB_OPTION) === self::DB_VERSION &&
+            self::exists(self::table()) && self::exists(self::suppressed_table())) {
             return;
         }
         global $wpdb;
@@ -105,7 +114,17 @@ final class TBX_Contacts
             KEY ref_code (ref_code)
         ) {$charset};");
 
-        if (self::exists($table)) {
+        // Solo almacena claves históricas descartadas; nunca datos de contacto.
+        // Así una copia eliminada no reaparece al volver a importar Prodata.
+        $suppressed = self::suppressed_table();
+        dbDelta("CREATE TABLE {$suppressed} (
+            source_plugin varchar(40) NOT NULL,
+            legacy_id bigint(20) unsigned NOT NULL,
+            deleted_at datetime NOT NULL,
+            PRIMARY KEY  (source_plugin,legacy_id)
+        ) {$charset};");
+
+        if (self::exists($table) && self::exists($suppressed)) {
             update_option(self::DB_OPTION, self::DB_VERSION, false);
         }
     }
@@ -127,15 +146,18 @@ final class TBX_Contacts
         }
         $sql = "SELECT COUNT(*) FROM " . self::legacy_table() .
             " AS s LEFT JOIN " . self::table() .
-            " AS d ON d.source_plugin = %s AND d.legacy_id = s.id WHERE d.id IS NULL";
-        return (int) $wpdb->get_var($wpdb->prepare($sql, self::LEGACY_SOURCE));
+            " AS d ON d.source_plugin = %s AND d.legacy_id = s.id " .
+            "LEFT JOIN " . self::suppressed_table() .
+            " AS x ON x.source_plugin = %s AND x.legacy_id = s.id " .
+            "WHERE d.id IS NULL AND x.legacy_id IS NULL";
+        return (int) $wpdb->get_var($wpdb->prepare($sql, self::LEGACY_SOURCE, self::LEGACY_SOURCE));
     }
 
     private static function insert_legacy(array $row): bool
     {
         global $wpdb;
         $source_id = absint($row['id'] ?? 0);
-        if ($source_id === 0) {
+        if ($source_id === 0 || self::is_suppressed(self::LEGACY_SOURCE, $source_id)) {
             return false;
         }
         // El índice UNIQUE también protege contra solicitudes simultáneas.
@@ -161,7 +183,7 @@ final class TBX_Contacts
         if (!self::exists(self::table())) {
             self::install();
         }
-        if (!self::exists(self::table())) {
+        if (!self::exists(self::table()) || self::is_suppressed(self::LEGACY_SOURCE, $id)) {
             return;
         }
         global $wpdb;
@@ -204,8 +226,10 @@ final class TBX_Contacts
             'SELECT s.* FROM ' . self::legacy_table() . ' AS s LEFT JOIN ' .
                 self::table() .
                 ' AS d ON d.source_plugin = %s AND d.legacy_id = s.id ' .
-                'WHERE d.id IS NULL ORDER BY s.id ASC LIMIT %d',
-            self::LEGACY_SOURCE, self::BATCH_SIZE
+                'LEFT JOIN ' . self::suppressed_table() .
+                ' AS x ON x.source_plugin = %s AND x.legacy_id = s.id ' .
+                'WHERE d.id IS NULL AND x.legacy_id IS NULL ORDER BY s.id ASC LIMIT %d',
+            self::LEGACY_SOURCE, self::LEGACY_SOURCE, self::BATCH_SIZE
         );
         $rows = $wpdb->get_results($sql, ARRAY_A);
         $imported = 0;
