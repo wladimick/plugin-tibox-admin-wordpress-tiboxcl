@@ -520,6 +520,42 @@ final class TIBOX_Landing_Form_API
         );
     }
 
+    /**
+     * Filtros reutilizados por listado y CSV. Solo se aceptan columnas conocidas.
+     * @return array{0:string,1:array,2:int,3:string,4:string}
+     */
+    public static function admin_filter_sql(): array
+    {
+        global $wpdb;
+        $landing = isset($_GET['landing_id']) ? absint(wp_unslash($_GET['landing_id'])) : 0;
+        $month = isset($_GET['mes']) ? sanitize_text_field(wp_unslash($_GET['mes'])) : '';
+        $search = isset($_GET['buscar']) ? sanitize_text_field(wp_unslash($_GET['buscar'])) : '';
+        $search = mb_substr($search, 0, 120);
+
+        $parts = [];
+        $args = [];
+        if ($landing > 0) {
+            $parts[] = 'landing_id = %d';
+            $args[] = $landing;
+        }
+        if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
+            $parts[] = 'created_at >= %s AND created_at < %s';
+            $args[] = $month . '-01 00:00:00';
+            $args[] = gmdate('Y-m-d 00:00:00', strtotime($month . '-01 +1 month'));
+        } else {
+            $month = '';
+        }
+        if ($search !== '') {
+            $like = '%' . $wpdb->esc_like($search) . '%';
+            $parts[] = '(name LIKE %s OR email LIKE %s OR phone LIKE %s OR company LIKE %s OR rut LIKE %s)';
+            for ($i = 0; $i < 5; $i++) {
+                $args[] = $like;
+            }
+        }
+
+        return [$parts ? ' WHERE ' . implode(' AND ', $parts) : '', $args, $landing, $month, $search];
+    }
+
     public static function render_leads_admin_page(): void
     {
         if (!current_user_can('manage_options')) {
@@ -557,52 +593,16 @@ final class TIBOX_Landing_Form_API
             : 1;
         $offset = ($page - 1) * $per_page;
 
-        $landing_filter = isset($_GET['landing_id'])
-            ? absint($_GET['landing_id'])
-            : 0;
-
-        $where = '';
-        $query_args = [];
-
-        if ($landing_filter > 0) {
-            $where = ' WHERE landing_id = %d';
-            $query_args[] = $landing_filter;
-        }
-
-        if ($query_args !== []) {
-            $total_sql = $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$table}{$where}",
-                ...$query_args
-            );
-        } else {
-            $total_sql = "SELECT COUNT(*) FROM {$table}";
-        }
-
+        [$where, $query_args, $landing_filter, $month_filter, $search_filter] = self::admin_filter_sql();
+        $total_sql = $query_args
+            ? $wpdb->prepare("SELECT COUNT(*) FROM {$table}{$where}", ...$query_args)
+            : "SELECT COUNT(*) FROM {$table}";
         $total = (int) $wpdb->get_var($total_sql);
 
-        $list_args = $query_args;
-        $list_args[] = $per_page;
-        $list_args[] = $offset;
-
-        if ($landing_filter > 0) {
-            $rows_sql = $wpdb->prepare(
-                "SELECT * FROM {$table}
-                 WHERE landing_id = %d
-                 ORDER BY created_at DESC, id DESC
-                 LIMIT %d OFFSET %d",
-                $landing_filter,
-                $per_page,
-                $offset
-            );
-        } else {
-            $rows_sql = $wpdb->prepare(
-                "SELECT * FROM {$table}
-                 ORDER BY created_at DESC, id DESC
-                 LIMIT %d OFFSET %d",
-                $per_page,
-                $offset
-            );
-        }
+        $rows_sql = $wpdb->prepare(
+            "SELECT * FROM {$table}{$where} ORDER BY created_at DESC, id DESC LIMIT %d OFFSET %d",
+            ...array_merge($query_args, [$per_page, $offset])
+        );
 
         $rows = $wpdb->get_results($rows_sql, ARRAY_A);
 
@@ -617,7 +617,7 @@ final class TIBOX_Landing_Form_API
         echo '<div class="tbx-panel">';
         echo '<p>Registro local de envíos recibidos por <code>/wp-json/tibox/v1/lead</code>.</p>';
 
-        echo '<form method="get" style="margin:16px 0;">';
+        echo '<form method="get" class="tbx-filters tbx-leads-filters">';
         echo '<input type="hidden" name="page" value="tibox-admin-leads">';
         echo '<label for="tibox-landing-filter"><strong>Landing:</strong></label> ';
         echo '<select id="tibox-landing-filter" name="landing_id">';
@@ -631,9 +631,13 @@ final class TIBOX_Landing_Form_API
         }
 
         echo '</select> ';
+        echo '<label for="tbx-leads-month">Mes <input id="tbx-leads-month" type="month" name="mes" value="' .
+            esc_attr($month_filter) . '"></label>';
+        echo '<label for="tbx-leads-search">Buscar <input id="tbx-leads-search" type="search" name="buscar" value="' .
+            esc_attr($search_filter) . '" placeholder="Nombre, correo, empresa o RUT"></label>';
         submit_button('Filtrar', 'secondary', '', false);
 
-        if ($landing_filter > 0) {
+        if ($landing_filter > 0 || $month_filter !== '' || $search_filter !== '') {
             echo ' <a class="button" href="' .
                 esc_url(
                     admin_url('admin.php?page=tibox-admin-leads')
@@ -645,7 +649,7 @@ final class TIBOX_Landing_Form_API
 
         echo '<p><strong>Total:</strong> ' . esc_html((string) $total) . ' leads. ';
         echo '<a class="button" href="' . esc_url(wp_nonce_url(
-            add_query_arg(['action' => 'tbx_export_leads', 'landing_id' => $landing_filter], admin_url('admin-post.php')),
+            add_query_arg(['action' => 'tbx_export_leads', 'landing_id' => $landing_filter, 'mes' => $month_filter, 'buscar' => $search_filter], admin_url('admin-post.php')),
             'tbx_export_leads'
         )) . '">Exportar CSV</a></p>';
 
@@ -671,6 +675,12 @@ final class TIBOX_Landing_Form_API
 
             if ($landing_filter > 0) {
                 $base_args['landing_id'] = $landing_filter;
+            }
+            if ($month_filter !== '') {
+                $base_args['mes'] = $month_filter;
+            }
+            if ($search_filter !== '') {
+                $base_args['buscar'] = $search_filter;
             }
 
             echo '<div class="tablenav"><div class="tablenav-pages">';
