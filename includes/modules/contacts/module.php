@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
 
 final class TBX_Contacts
 {
-    public const DB_VERSION = '1.2.0';
+    public const DB_VERSION = '1.3.0';
     private const DB_OPTION = 'tbx_contacts_db_version';
     private const LEGACY_SOURCE = 'tibox-leads';
     private const BATCH_SIZE = 100;
@@ -57,6 +57,7 @@ final class TBX_Contacts
         add_action('admin_post_tbx_contacts_import', [self::class, 'import_action']);
         add_action('admin_post_tbx_contacts_delete', [self::class, 'delete_action']);
         add_action('admin_post_tbx_contacts_export', [self::class, 'export_action']);
+        add_action('admin_post_tbx_contacts_status', [self::class, 'status_action']);
         // Tibox Leads dispara este hook DESPUÉS de persistir su propio registro.
         add_action('tbx_leads_inserted', [self::class, 'sync_legacy_entry'], 10, 1);
         TBX_Admin::register_tab('contactos', 'Contactos', [self::class, 'render'], 25);
@@ -81,6 +82,7 @@ final class TBX_Contacts
             imported_at datetime NOT NULL,
             created_at datetime NOT NULL,
             type varchar(20) NOT NULL DEFAULT '',
+            status varchar(20) NOT NULL DEFAULT 'nuevo',
             origin varchar(30) NOT NULL DEFAULT '',
             form_id varchar(100) NOT NULL DEFAULT '',
             form_name varchar(190) NOT NULL DEFAULT '',
@@ -111,6 +113,7 @@ final class TBX_Contacts
             UNIQUE KEY source_record (source_plugin,legacy_id),
             KEY created_at (created_at),
             KEY type (type),
+            KEY status (status),
             KEY ref_code (ref_code)
         ) {$charset};");
 
@@ -263,6 +266,58 @@ final class TBX_Contacts
         return (bool) $wpdb->get_var($wpdb->prepare($sql, $source, $id));
     }
 
+    public static function suppress_external(string $source, int $id): bool
+    {
+        if (!in_array($source, ['tibox-landing', 'wpforms-history'], true) || $id < 1 ||
+            !self::exists(self::suppressed_table())) {
+            return false;
+        }
+        global $wpdb;
+        return $wpdb->query($wpdb->prepare(
+            'INSERT INTO ' . self::suppressed_table() .
+            ' (source_plugin,legacy_id,deleted_at) VALUES (%s,%d,%s) ' .
+            'ON DUPLICATE KEY UPDATE deleted_at = VALUES(deleted_at)',
+            $source, $id, current_time('mysql', true)
+        )) !== false;
+    }
+
+    public static function status_values(): array
+    {
+        return ['nuevo' => 'Nuevo', 'gestion' => 'En gestión',
+            'respondido' => 'Respondido', 'cerrado' => 'Cerrado'];
+    }
+
+    public static function status_action(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die('No tienes permisos para actualizar contactos.', '', ['response' => 403]);
+        }
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            wp_die('Método no permitido.', '', ['response' => 405]);
+        }
+        $id = isset($_POST['contact_id']) ? absint(wp_unslash($_POST['contact_id'])) : 0;
+        check_admin_referer('tbx_contacts_status_' . $id);
+        $status = isset($_POST['status']) && is_string($_POST['status'])
+            ? sanitize_key(wp_unslash($_POST['status'])) : '';
+        if ($id < 1 || !isset(self::status_values()[$status])) {
+            wp_die('Estado o registro inválido.', '', ['response' => 400]);
+        }
+        self::install();
+        global $wpdb;
+        $saved = $wpdb->update(self::table(), ['status' => $status], ['id' => $id], ['%s'], ['%d']);
+        $args = ['status_saved' => $saved !== false ? '1' : '0'];
+        foreach (['tipo','dispositivo','mes','s','formulario','estado'] as $key) {
+            if (isset($_POST[$key]) && is_string($_POST[$key])) {
+                $args[$key] = sanitize_text_field(wp_unslash($_POST[$key]));
+            }
+        }
+        if (isset($_POST['paged'])) {
+            $args['paged'] = max(1, absint($_POST['paged']));
+        }
+        wp_safe_redirect(add_query_arg($args, TBX_Admin::tab_url('contactos')));
+        exit;
+    }
+
     /**
      * Elimina físicamente SOLO la fila del panel TIBOX Admin.
      * Nunca toca la tabla tbx_leads ni dispara envíos/mediciones.
@@ -313,7 +368,7 @@ final class TBX_Contacts
         $status = self::delete_contact($id);
         // Preserva filtros y paginación, sin aceptar claves ajenas.
         $args = ['deleted' => $status];
-        foreach (['tipo','dispositivo','mes','s'] as $key) {
+        foreach (['tipo','dispositivo','mes','s','formulario','estado'] as $key) {
             if (isset($_POST[$key]) && is_string($_POST[$key])) {
                 $args[$key] = sanitize_text_field(wp_unslash($_POST[$key]));
             }
@@ -361,7 +416,7 @@ final class TBX_Contacts
         }
         fwrite($handle, "\xEF\xBB\xBF");
         $columns = [
-            'Fecha y hora', 'Canal', 'Tecnología', 'Contacto', 'Correo', 'Teléfono',
+            'Fecha y hora', 'Canal', 'Estado gestión', 'Tecnología', 'Contacto', 'Correo', 'Teléfono',
             'Referencia WhatsApp', 'Destino', 'Botón', 'Ubicación',
             'Página', 'Título de página', 'ID formulario', 'Formulario',
             'Origen campaña', 'Medio', 'Campaña', 'Término', 'Contenido',
@@ -385,7 +440,7 @@ final class TBX_Contacts
                     ? get_date_from_gmt($r['created_at'], 'Y-m-d H:i:s')
                     : '';
                 $values = [
-                    $date, $r['type'], $r['origin'], $r['name'], $r['email'],
+                    $date, $r['type'], $r['status'], $r['origin'], $r['name'], $r['email'],
                     $r['phone'], $r['ref_code'], $r['destination'], $r['button_text'],
                     $r['location'], $r['page_url'], $r['page_title'], $r['form_id'],
                     $r['form_name'], $r['source'], $r['medium'], $r['campaign'],
@@ -412,6 +467,21 @@ final class TBX_Contacts
             $type = '';
         }
         $search = isset($_GET['s']) ? mb_substr(sanitize_text_field(wp_unslash($_GET['s'])), 0, 120) : '';
+        $status = isset($_GET['estado']) && is_string($_GET['estado'])
+            ? sanitize_key(wp_unslash($_GET['estado'])) : '';
+        if ($status !== '' && !isset(self::status_values()[$status])) {
+            $status = '';
+        }
+        $form = isset($_GET['formulario']) && is_string($_GET['formulario'])
+            ? sanitize_text_field(wp_unslash($_GET['formulario'])) : '';
+        if (mb_strlen($form) > 150 || !str_contains($form, '|')) {
+            $form = '';
+        }
+        $form_values = $form !== '' ? explode('|', $form, 2) : [];
+        if (count($form_values) !== 2 || !preg_match('/^[a-z0-9_-]{1,30}$/', $form_values[0] ?? '')) {
+            $form = '';
+            $form_values = [];
+        }
         $month = isset($_GET['mes']) && is_string($_GET['mes']) ? sanitize_text_field(wp_unslash($_GET['mes'])) : '';
         if ($month !== '' && !preg_match('/^20[0-9]{2}-(0[1-9]|1[0-2])$/', $month)) {
             $month = '';
@@ -425,6 +495,15 @@ final class TBX_Contacts
         if ($type !== '') {
             $parts[] = 'type = %s';
             $params[] = $type;
+        }
+        if ($status !== '') {
+            $parts[] = 'status = %s';
+            $params[] = $status;
+        }
+        if ($form_values) {
+            $parts[] = 'origin = %s AND form_id = %s';
+            $params[] = $form_values[0];
+            $params[] = $form_values[1];
         }
         if ($month !== '') {
             $start = DateTimeImmutable::createFromFormat('!Y-m', $month, new DateTimeZone('UTC'));
@@ -443,7 +522,7 @@ final class TBX_Contacts
             $parts[] = '(name LIKE %s OR email LIKE %s OR phone LIKE %s OR ref_code LIKE %s OR form_name LIKE %s)';
             $params = array_merge($params, array_fill(0, 5, $like));
         }
-        return [$parts ? ' WHERE ' . implode(' AND ', $parts) : '', $params, $type, $search, $device, $month];
+        return [$parts ? ' WHERE ' . implode(' AND ', $parts) : '', $params, $type, $search, $device, $month, $form, $status];
     }
 
     public static function render(): void
@@ -524,7 +603,7 @@ final class TBX_Contacts
         TBX_Native_Contacts::render_settings();
         TBX_Native_Contacts::render_wa_settings();
 
-        [$where, $params, $type, $search, $device, $month] = self::filters();
+        [$where, $params, $type, $search, $device, $month, $form, $status] = self::filters();
         $per_page = 50;
         $page = isset($_GET['paged']) ? max(1, absint(wp_unslash($_GET['paged']))) : 1;
         $count_sql = 'SELECT COUNT(*) FROM ' . $table . $where;
