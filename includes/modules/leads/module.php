@@ -121,6 +121,44 @@ add_action('admin_post_tbx_export_leads', function (): void {
     exit;
 });
 
+/* ---------- Borrado seguro de leads ---------- */
+
+/*
+ * Solo acepta POST y nonce por registro. El filtro y la paginación se
+ * reconstruyen con valores validados; nunca se utiliza un redirect arbitrario.
+ */
+add_action('admin_post_tbx_admin_delete_lead', function (): void {
+    if (!current_user_can('manage_options')) {
+        wp_die('No tienes permisos para eliminar leads.', '', ['response' => 403]);
+    }
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+        wp_die('Método no permitido.', '', ['response' => 405]);
+    }
+
+    $id = isset($_POST['lead_id']) ? absint(wp_unslash($_POST['lead_id'])) : 0;
+    if ($id < 1) {
+        wp_die('Registro inválido.', '', ['response' => 400]);
+    }
+    check_admin_referer('tbx_admin_delete_lead_' . $id);
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'tibox_landing_leads';
+    $deleted = $wpdb->delete($table, ['id' => $id], ['%d']);
+
+    $args = [
+        'tbx_deleted' => $deleted === 1 ? '1' : '0',
+    ];
+    if (!empty($_POST['landing_id'])) {
+        $args['landing_id'] = absint(wp_unslash($_POST['landing_id']));
+    }
+    if (!empty($_POST['paged'])) {
+        $args['paged'] = max(1, absint(wp_unslash($_POST['paged'])));
+    }
+
+    wp_safe_redirect(add_query_arg($args, TBX_Admin::tab_url('leads')));
+    exit;
+});
+
 /* ---------- WebOps ---------- */
 
 /*
