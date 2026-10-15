@@ -690,126 +690,129 @@ final class TIBOX_Landing_Form_API
         array $rows,
         bool $show_landing = false
     ): void {
-        echo '<div style="overflow-x:auto;max-width:100%;">';
-        echo '<table class="widefat striped" style="min-width:1950px;font-size:12px;">';
-        echo '<thead><tr>';
-
-        $headers = [
-            'Fecha',
-        ];
-
+        echo '<div class="tbx-leads-scroll">';
+        echo '<table class="widefat striped tbx-table tbx-leads-table"><thead><tr>';
+        echo '<th>Fecha</th>';
         if ($show_landing) {
-            $headers[] = 'Landing';
+            echo '<th>Landing</th>';
         }
-
-        $headers = array_merge($headers, [
-            'Nombre',
-            'Email',
-            'Teléfono',
-            'Empresa',
-            'RUT',
-            'Usuarios',
-            'Área',
-            'Mensaje',
-            'Formulario',
-            'Submission ID',
-            'UTM',
-            'IDs Ads',
-            'Contexto',
-        ]);
-
-        foreach ($headers as $header) {
-            echo '<th>' . esc_html($header) . '</th>';
+        echo '<th>Contacto</th><th>Empresa y solicitud</th><th>Origen</th><th>Detalles</th>';
+        if ($show_landing) {
+            echo '<th class="tbx-leads-actions">Acciones</th>';
         }
-
         echo '</tr></thead><tbody>';
 
         foreach ($rows as $row) {
+            $id = (int) $row['id'];
+            $landing_id = (int) $row['landing_id'];
+            $title = $landing_id ? get_the_title($landing_id) : '';
+            $source = trim((string) ($row['utm_source'] ?? ''));
+            $medium = trim((string) ($row['utm_medium'] ?? ''));
+            $email = sanitize_email((string) ($row['email'] ?? ''));
+            $phone = (string) ($row['phone'] ?? '');
+
             echo '<tr>';
-            echo '<td>' . esc_html($row['created_at']) . '</td>';
+            echo '<td class="tbx-leads-date"><strong>' . esc_html(mysql2date('d-m-Y', $row['created_at'])) .
+                '</strong><small>' . esc_html(mysql2date('H:i', $row['created_at'])) . '</small></td>';
 
             if ($show_landing) {
-                $landing_title = $row['landing_id']
-                    ? get_the_title((int) $row['landing_id'])
-                    : '';
-
-                echo '<td>';
-
-                if ((int) $row['landing_id'] > 0) {
-                    $edit_url = get_edit_post_link((int) $row['landing_id']);
-
+                echo '<td class="tbx-leads-landing">';
+                if ($landing_id > 0) {
+                    $landing_name = $title !== '' ? $title : 'Landing #' . $landing_id;
+                    $edit_url = get_edit_post_link($landing_id);
                     if ($edit_url) {
-                        echo '<a href="' . esc_url($edit_url) . '"><strong>' .
-                            esc_html(
-                                $landing_title !== ''
-                                    ? $landing_title
-                                    : ('Landing #' . $row['landing_id'])
-                            ) .
-                            '</strong></a>';
+                        echo '<a href="' . esc_url($edit_url) . '"><strong>' . esc_html($landing_name) . '</strong></a>';
                     } else {
-                        echo esc_html(
-                            $landing_title !== ''
-                                ? $landing_title
-                                : ('Landing #' . $row['landing_id'])
-                        );
+                        echo '<strong>' . esc_html($landing_name) . '</strong>';
                     }
                 } else {
-                    echo 'No resuelta';
+                    echo '<span class="tbx-muted">Sin landing asociada</span>';
                 }
-
                 echo '</td>';
             }
 
-            echo '<td><strong>' . esc_html($row['name']) . '</strong></td>';
-            echo '<td><a href="mailto:' . esc_attr($row['email']) . '">' .
-                esc_html($row['email']) . '</a></td>';
-            echo '<td>' . esc_html($row['phone']) . '</td>';
-            echo '<td>' . esc_html($row['company']) . '</td>';
-            echo '<td>' . esc_html($row['rut']) . '</td>';
-            echo '<td>' . esc_html($row['users']) . '</td>';
-            echo '<td>' . esc_html($row['area']) . '</td>';
-            echo '<td style="max-width:260px;white-space:normal;">' .
-                nl2br(esc_html($row['message'])) . '</td>';
-
-            echo '<td><code>' . esc_html($row['form_id']) . '</code><br><small>' .
-                esc_html($row['source_key']) . '</small></td>';
-
-            echo '<td><code style="word-break:break-all;">' .
-                esc_html($row['submission_id']) . '</code></td>';
-
-            echo '<td>';
-            self::render_meta_line('source', $row['utm_source']);
-            self::render_meta_line('medium', $row['utm_medium']);
-            self::render_meta_line('campaign', $row['utm_campaign']);
-            self::render_meta_line('term', $row['utm_term']);
-            self::render_meta_line('content', $row['utm_content']);
-            echo '</td>';
-
-            echo '<td>';
-            self::render_meta_line('gclid', $row['gclid']);
-            self::render_meta_line('gbraid', $row['gbraid']);
-            self::render_meta_line('wbraid', $row['wbraid']);
-            echo '</td>';
-
-            echo '<td style="max-width:320px;white-space:normal;">';
-            self::render_meta_line('path', $row['landing_path']);
-            self::render_meta_line('title', $row['page_title']);
-
-            if ($row['landing_url'] !== '') {
-                echo '<div><strong>url:</strong> <a href="' .
-                    esc_url($row['landing_url']) .
-                    '" target="_blank" rel="noopener">abrir</a></div>';
+            echo '<td class="tbx-leads-contact"><strong>' .
+                esc_html($row['name'] ?: 'Sin nombre') . '</strong>';
+            if ($email !== '') {
+                echo '<a href="' . esc_url('mailto:' . $email) . '">' . esc_html($email) . '</a>';
             }
-
-            echo '<div><strong>consent:</strong> ' .
-                ($row['privacy'] ? 'sí' : 'no') .
-                '</div>';
-
+            if ($phone !== '') {
+                echo '<small>' . esc_html($phone) . '</small>';
+            }
             echo '</td>';
+
+            echo '<td class="tbx-leads-request">';
+            if ($row['company'] !== '') {
+                echo '<strong>' . esc_html($row['company']) . '</strong>';
+            }
+            if ($row['area'] !== '') {
+                echo '<div>' . esc_html($row['area']) . '</div>';
+            }
+            if ($row['users'] !== '') {
+                echo '<small>Usuarios: ' . esc_html($row['users']) . '</small>';
+            }
+            if ($row['message'] !== '') {
+                echo '<div class="tbx-leads-message">' . esc_html($row['message']) . '</div>';
+            }
+            echo '</td>';
+
+            echo '<td><span class="tbx-badge tbx-badge--form">Formulario</span>';
+            if ($source !== '') {
+                echo '<div class="tbx-leads-source"><strong>' . esc_html($source) . '</strong>';
+                if ($medium !== '') {
+                    echo ' / ' . esc_html($medium);
+                }
+                echo '</div>';
+            } else {
+                echo '<div class="tbx-leads-source">Sin campaña registrada</div>';
+            }
+            if ($row['utm_campaign'] !== '') {
+                echo '<small>' . esc_html($row['utm_campaign']) . '</small>';
+            }
+            echo '</td>';
+
+            echo '<td class="tbx-leads-details"><details><summary>Ver detalles</summary>';
+            echo '<div class="tbx-leads-details-body">';
+            self::render_meta_line('RUT', (string) $row['rut']);
+            self::render_meta_line('Formulario', (string) $row['form_id']);
+            self::render_meta_line('Tipo', (string) $row['source_key']);
+            self::render_meta_line('ID de envío', (string) $row['submission_id']);
+            self::render_meta_line('Página', (string) $row['landing_path']);
+            self::render_meta_line('Título', (string) $row['page_title']);
+            self::render_meta_line('UTM source', (string) $row['utm_source']);
+            self::render_meta_line('UTM medium', (string) $row['utm_medium']);
+            self::render_meta_line('UTM campaign', (string) $row['utm_campaign']);
+            self::render_meta_line('UTM term', (string) $row['utm_term']);
+            self::render_meta_line('UTM content', (string) $row['utm_content']);
+            self::render_meta_line('gclid', (string) $row['gclid']);
+            self::render_meta_line('gbraid', (string) $row['gbraid']);
+            self::render_meta_line('wbraid', (string) $row['wbraid']);
+            self::render_meta_line('Consentimiento', !empty($row['privacy']) ? 'Sí' : 'No');
+            if ($row['landing_url'] !== '') {
+                echo '<div><a href="' . esc_url($row['landing_url']) .
+                    '" target="_blank" rel="noopener noreferrer">Abrir página de origen ↗</a></div>';
+            }
+            echo '</div></details></td>';
+
+            if ($show_landing) {
+                echo '<td class="tbx-leads-actions"><form method="post" action="' .
+                    esc_url(admin_url('admin-post.php')) .
+                    '" onsubmit="return confirm(&quot;¿Eliminar este lead de forma permanente? Esta acción no se puede deshacer.&quot;);">';
+                echo '<input type="hidden" name="action" value="tbx_admin_delete_lead">';
+                echo '<input type="hidden" name="lead_id" value="' . esc_attr((string) $id) . '">';
+                echo '<input type="hidden" name="landing_id" value="' .
+                    esc_attr((string) (isset($_GET['landing_id']) ? absint($_GET['landing_id']) : 0)) . '">';
+                echo '<input type="hidden" name="paged" value="' .
+                    esc_attr((string) (isset($_GET['paged']) ? max(1, absint($_GET['paged'])) : 1)) . '">';
+                echo wp_nonce_field('tbx_admin_delete_lead_' . $id, '_wpnonce', true, false);
+                echo '<button type="submit" class="button-link-delete tbx-leads-delete">Borrar</button>';
+                echo '</form></td>';
+            }
             echo '</tr>';
         }
 
         echo '</tbody></table></div>';
+        echo '<p class="tbx-muted">Los detalles de cada lead se despliegan al hacer clic en «Ver detalles».</p>';
     }
 
     /* =========================================================
