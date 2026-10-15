@@ -14,6 +14,7 @@ $GLOBALS['styles'] = [];
 $GLOBALS['scripts'] = [];
 $GLOBALS['inline'] = [];
 function add_action(...$args) {}
+function add_filter(...$args) {}
 function get_option($name, $default = null) {
     return match ($name) {
         'tbx_admin_contact_whatsapp' => $GLOBALS['wa_settings'],
