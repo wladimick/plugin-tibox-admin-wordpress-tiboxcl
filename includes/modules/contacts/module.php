@@ -257,7 +257,7 @@ final class TBX_Contacts
         echo '<p class="tbx-lead">Registro unificado de contactos. Esta primera versión admite la importación y sincronización de TIBOX Leads 1.0.0 en el mismo WordPress.</p>';
 
         $legacy_found = self::exists(self::legacy_table());
-        echo '<div class="tbx-import-card"><h2>Importar datos anteriores · Prodata</h2>';
+        echo '<div class="tbx-import-card"><h2>Importar datos anteriores · TIBOX Leads</h2>';
         if (!$legacy_found) {
             echo '<p class="tbx-muted">No se detectó la tabla del plugin antiguo TIBOX Leads en este sitio. No se necesita importar nada si nunca se utilizó.</p>';
         } else {
