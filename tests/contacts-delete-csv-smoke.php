@@ -70,6 +70,12 @@ check(TBX_Contacts::is_suppressed('tibox-leads',41),'Tombstoned contact should n
 check(TBX_Contacts::delete_contact(2) === 'deleted','Native contact delete must succeed');
 check(count($wpdb->deleted) === 1,'Native deletion must not add a legacy tombstone');
 check(TBX_Contacts::delete_contact(999) === 'not_found','Missing ID should not report success');
+$wpdb->records[4]=['id'=>4,'source_plugin'=>'wpforms-history','legacy_id'=>8301];
+$wpdb->records[5]=['id'=>5,'source_plugin'=>'tibox-landing','legacy_id'=>9201];
+check(TBX_Contacts::delete_contact(4) === 'deleted','WPForms historic copy must delete');
+check(TBX_Contacts::is_suppressed('wpforms-history',8301),'WPForms imported source must be excluded');
+check(TBX_Contacts::delete_contact(5) === 'deleted','Landing historic copy must delete');
+check(TBX_Contacts::is_suppressed('tibox-landing',9201),'Landing source must not be reimported');
 $wpdb->records[3]=['id'=>3,'source_plugin'=>'tibox-leads','legacy_id'=>42];
 $wpdb->marker_fails=true;
 check(TBX_Contacts::delete_contact(3) === 'error','Tombstone write failure must abort delete');
