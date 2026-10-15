@@ -7,6 +7,7 @@ define('ABSPATH', __DIR__ . '/');
 define('ARRAY_A', 'ARRAY_A');
 
 function add_action(...$args): void {}
+function add_filter(...$args) {}
 function get_option($key, $default = null) { return $default; }
 function is_user_logged_in(): bool { return false; }
 function sanitize_text_field($v): string { return trim(strip_tags((string) $v)); }
