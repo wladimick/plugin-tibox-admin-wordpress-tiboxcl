@@ -42,7 +42,7 @@ final class TIBOX_Landing_Form_API
     private const DB_VERSION_OPTION = 'tibox_landing_leads_db_version';
 
     /* Valores por defecto. Se editan en Tibox Admin › Formularios y correos. */
-    public const SETTINGS_OPTION = 'tbx_leads_settings';
+    public const SETTINGS_OPTION = 'tbx_admin_lead_form_settings';
 
     public static function defaults(): array
     {
@@ -59,8 +59,15 @@ final class TIBOX_Landing_Form_API
 
     public static function setting(string $key)
     {
-        $saved = get_option(self::SETTINGS_OPTION, []);
-        $all = array_merge(self::defaults(), is_array($saved) ? $saved : []);
+        // El plugin Prodata también usa "tbx_leads_settings", pero con otro
+        // esquema. No sobrescribir sus ajustes; leer únicamente el legado
+        // de Tibox Admin mientras el usuario no guarde en el nuevo nombre.
+        $saved = get_option(self::SETTINGS_OPTION, null);
+        if (!is_array($saved)) {
+            $legacy = get_option('tbx_leads_settings', []);
+            $saved = is_array($legacy) && array_key_exists('to', $legacy) ? $legacy : [];
+        }
+        $all = array_merge(self::defaults(), $saved);
         return $all[$key] ?? null;
     }
 
@@ -520,6 +527,15 @@ final class TIBOX_Landing_Form_API
         }
 
         self::maybe_install_table();
+
+        if (isset($_GET['tbx_deleted'])) {
+            $deleted = sanitize_key(wp_unslash($_GET['tbx_deleted']));
+            if ($deleted === '1') {
+                echo '<div class="notice notice-success is-dismissible"><p>Lead eliminado correctamente.</p></div>';
+            } elseif ($deleted === '0') {
+                echo '<div class="notice notice-error is-dismissible"><p>No se pudo eliminar el lead. Puede que ya no exista.</p></div>';
+            }
+        }
 
         global $wpdb;
 
