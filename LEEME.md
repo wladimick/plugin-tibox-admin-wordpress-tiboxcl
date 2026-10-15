@@ -159,3 +159,21 @@ El módulo opcional **Contactos** incluye ahora la sección **Captura directa de
 - El HTML genérico y clics individuales de WhatsApp/teléfono/correo continúan dependiendo del plugin original. Aún se requiere portar estos eventos antes de declarar equivalencia funcional plena. El módulo Actividad cuenta sus clics de forma agregada, no preserva las referencias individuales que asignaba TIBOX Leads.
 - La atribución UTM de formularios propios se extrae de campos publicados UTM o de la URL de origen cuando los contiene; para igualdad total con la persistencia de campaña del plugin anterior falta implementar un puente de atribución explícito.
 - Antes de usar en producción se requiere prueba de integración en WordPress con cada plugin de formularios, revisión de consentimiento y comparación GTM/GA4. No implica ninguna modificación de la base de datos original al importar.
+
+
+## Contactos 1.6.0 beta — Clics de contacto y referencias WhatsApp
+
+La captura nativa opcional de **Contactos** ahora incluye eventos individuales de WhatsApp, teléfono y correo. La opción sigue desactivada por defecto y se bloquea automáticamente mientras TIBOX Leads 1.0.0 continúe activo para evitar duplicaciones.
+
+- Al clicar en un enlace WhatsApp con número reconocible (wa.me o api.whatsapp.com, por ejemplo), se añade una **referencia aleatoria de seis caracteres** a su texto: Ref: ABC123. La misma referencia se copia a Contactos junto a la fecha, página, posición del enlace y destino.
+- Los enlaces WhatsApp de servicios acortados (ej. wa.link), widgets sin ancla editable o sin número no siempre permiten agregar referencia. En tales casos el evento puede guardarse sin referencia; se mantiene el enlace original.
+- Los clics en teléfonos (tel:) y correos (mailto:) se almacenan como **intenciones de contacto**; no como ventas ni conversaciones confirmadas.
+- Los clics individuales de Contactos son independientes del resumen agregado de Actividad y **no emiten nuevos eventos GTM**, evitando duplicar conversiones de la medición anterior.
+- La solución no crea cookies ni IDs de visitante. Solo registra la página (sin query), datos del botón, destino, referencia cuando procede y tres UTMs limitadas de la página o sessionStorage de analítica.
+- Hay protección de origen, deduplicación temporal de clics y límite de frecuencia en el endpoint /wp-json/tibox/v1/contact-event; el servidor no almacena IP ni User-Agent completo.
+
+### Faltante de paridad en Prodata
+
+La implementación del plugin original incluía un **botón flotante configurable**, normalización de enlaces WhatsApp y tracking de algunos formularios HTML propios. Estos elementos no están completamente portados. Para desactivar definitivamente TIBOX Leads, documentar en staging qué botones y formularios tiene Prodata, probar que no cambian sus enlaces y validar todas las referencias en WhatsApp, antes de instalar una versión nueva en producción.
+
+Las pruebas automatizadas verifican generación de referencias, registro de teléfono/correo, atribución simple, consentimiento y bloqueo de doble clic. **No reemplazan pruebas de integración en navegador real ni de WordPress**.
