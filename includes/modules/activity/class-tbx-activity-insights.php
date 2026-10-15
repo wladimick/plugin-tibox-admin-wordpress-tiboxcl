@@ -18,6 +18,7 @@ final class TBX_Activity_Insights
         'form_submit', 'wpforms_submit', 'form_success', 'form_error',
         'faq_open', 'section_view', 'scroll_depth',
         'download_click', 'outbound_click', 'engaged_15s',
+        'navigation_step', 'repeated_click',
     ];
 
     public static function table(): string
@@ -265,6 +266,39 @@ final class TBX_Activity_Insights
             foreach ($interactions as $r) {
                 echo '<tr><td>' . ($r->event === 'download_click' ? 'Descarga' : 'Enlace externo') .
                     '</td><td>' . esc_html($r->label ?: 'Sin etiqueta') . '</td><td>' .
+                    esc_html($r->page_path) . '</td><td class="num">' .
+                    esc_html(number_format_i18n((int) $r->n)) . '</td></tr>';
+            }
+            echo '</tbody></table>';
+        }
+
+        // Transiciones agregadas entre rutas, sin sesión identificable.
+        $routes = $wpdb->get_results($wpdb->prepare(
+            "SELECT label AS origin, page_path AS destination, SUM(hits) AS n FROM {$t}
+             WHERE {$where} AND event='navigation_step' AND label != ''
+             GROUP BY label,page_path ORDER BY n DESC LIMIT 15", ...$args
+        ));
+        if ($routes) {
+            echo '<h3 class="tbx-h2">Rutas frecuentes de navegación</h3>';
+            echo '<table class="widefat striped tbx-table"><thead><tr><th>Desde</th><th>Hacia</th><th class="num">Transiciones</th></tr></thead><tbody>';
+            foreach ($routes as $r) {
+                echo '<tr><td>' . esc_html($r->origin) . '</td><td>' . esc_html($r->destination) .
+                    '</td><td class="num">' . esc_html(number_format_i18n((int) $r->n)) . '</td></tr>';
+            }
+            echo '</tbody></table>';
+        }
+
+        $repeated = $wpdb->get_results($wpdb->prepare(
+            "SELECT label, page_path, SUM(hits) AS n FROM {$t}
+             WHERE {$where} AND event='repeated_click'
+             GROUP BY label,page_path ORDER BY n DESC LIMIT 15", ...$args
+        ));
+        if ($repeated) {
+            echo '<h3 class="tbx-h2">Posible fricción: clics repetidos</h3>';
+            echo '<p class="tbx-muted">Tres clics en un control en menos de 1,7 segundos. Es una señal orientativa, no confirma un error.</p>';
+            echo '<table class="widefat striped tbx-table"><thead><tr><th>Control</th><th>Página</th><th class="num">Veces</th></tr></thead><tbody>';
+            foreach ($repeated as $r) {
+                echo '<tr><td>' . esc_html($r->label ?: 'Control') . '</td><td>' .
                     esc_html($r->page_path) . '</td><td class="num">' .
                     esc_html(number_format_i18n((int) $r->n)) . '</td></tr>';
             }
