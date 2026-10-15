@@ -32,3 +32,7 @@ jobs:
         run: node tests/vitals-smoke.cjs
       - name: Verify native Contact form sanitation and legacy mutual exclusion
         run: php tests/native-contacts-smoke.php
+      - name: Verify native WhatsApp reference and contact click tracking
+        run: node tests/native-clicks-smoke.cjs
+      - name: Verify native click REST ingestion and security checks
+        run: php tests/native-click-endpoint-smoke.php
