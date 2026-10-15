@@ -38,3 +38,5 @@ jobs:
         run: php tests/native-click-endpoint-smoke.php
       - name: Verify optional floating WhatsApp button and reference
         run: node tests/native-wa-button-smoke.cjs
+      - name: Verify Contacts delete protection and CSV output safety
+        run: php tests/contacts-delete-csv-smoke.php
