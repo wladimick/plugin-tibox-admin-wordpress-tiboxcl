@@ -2,6 +2,7 @@
 define('ABSPATH', __DIR__ . '/');
 define('ARRAY_A', 'ARRAY_A');
 function add_action(...$a) {}
+function add_filter(...$args) {}
 function get_option($key, $default = null) { return $default; }
 function wp_json_encode($v) { return json_encode($v); }
 function sanitize_key($v) { return preg_replace('/[^a-z0-9_-]/', '', strtolower((string)$v)); }

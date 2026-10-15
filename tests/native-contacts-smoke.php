@@ -1,6 +1,7 @@
 <?php
 define('ABSPATH', __DIR__ . '/');
 function add_action(...$args): void {}
+function add_filter(...$args) {}
 function sanitize_text_field($s): string { return trim(strip_tags((string) $s)); }
 function sanitize_textarea_field($s): string { return trim(strip_tags((string) $s)); }
 function sanitize_key($s): string { return strtolower(preg_replace('/[^a-z0-9_-]/i', '', (string) $s)); }

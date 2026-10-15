@@ -236,3 +236,19 @@ Esta entrega transforma **TIBOX Admin > Contactos** en una bandeja prioritaria p
 - Backup completo antes de actualizar. No desactivar el TIBOX Leads original en Prodata hasta completar las pruebas.
 
 La versión 1.9 no fusiona físicamente ni elimina tablas origen, y no envía correos nuevos ni conversiones adicionales. Las opciones de captura nativa y Web Vitals continúan desactivadas de forma predeterminada.
+
+ 
+## Corrección 1.9.1 beta — Botón WhatsApp independiente
+
+**Bug corregido:** en 1.9.0 el botón flotante solo cargaba desde tibox-contact-clicks.js, condicionado a `can_capture()`. Por eso no aparecía en Prodata mientras TIBOX Leads estaba activo o la Captura directa de formularios estaba apagada.
+
+- **Botón independiente:** el botón tiene su propio JS (`assets/tibox-wa-button.js`) y CSS. Se controla únicamente desde **TIBOX Admin > Contactos > Importaciones y configuración de capturas > Botón flotante de WhatsApp**, con número, etiqueta, mensaje y posición.
+- **Captura directa:** mantenerla apagada durante convivencia en Prodata. El botón sigue visible y abre WhatsApp aun sin captura nativa.
+- **Sin duplicar flotantes:** si el plugin original TIBOX Leads está activo y se activa el botón de TIBOX Admin, el plugin original recibe en frontend `wa_on = 0` mediante un filtro de opción **sin modificar su configuración persistida**. Así solo TIBOX Admin muestra su botón.
+- **Sin perder seguimiento:** TIBOX Leads continúa procesando el clic en `#tbx-wa`, asigna `Ref: XXXXXX` y guarda la interacción en su tabla original; el hook ya existente la sincroniza hacia Contactos.
+- **Sin plugin antiguo:** el botón también funciona; para registrar los clics individualmente se debe habilitar la Captura nativa (y sus consentimientos pertinentes).
+- **Administradores:** el botón aparece en el frontend incluso si el visitante está conectado a WordPress. Las pruebas de administración siguen excluidas del registro de contactos en el plugin anterior.
+- La interfaz del plugin antiguo conserva sus ajustes al abrir **Leads > Ajustes**. Si deshabilitas el botón en TIBOX Admin, vuelve a aplicarse la configuración propia del plugin anterior.
+- Las opciones del botón y las estadísticas siguen en tablas/opciones separadas. Verificar en Prodata tras actualizar y limpiar caché de página/CDN/minificación.
+
+Se agregan pruebas PHP de independencia y convivencia más pruebas JS de botón mostrado aun con seguimiento desactivado. **No se han ejecutado pruebas de navegador sobre el WordPress de Prodata en producción.**
