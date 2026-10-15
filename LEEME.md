@@ -189,3 +189,16 @@ En **TIBOX Admin > Contactos**, se agregó la configuración opcional para recre
 - No añade seguimiento de usuario, cookie ni eventos de conversión GTM.
 - Probar en staging que la posición no tape otros widgets, banners de cookies o contenido móvil y que la referencia aparezca efectivamente en el mensaje abierto.
 - Antes de retirar el plugin antiguo también debe confirmarse si Prodata utiliza formularios HTML hechos a medida u otros widgets WhatsApp distintos del flotante. La equivalencia todavía requiere QA funcional.
+
+
+## Contactos 1.8.0 beta — Borrar y Exportar CSV
+
+La pestaña **Contactos** incorpora ahora **Borrar** por cada fila, y **Exportar CSV** compatible con los filtros de mes, canal, dispositivo y búsqueda.
+
+- La eliminación necesita permisos de administrador y un nonce exclusivo del registro, usa **POST** y requiere confirmación. No modifica la tabla del plugin histórico TIBOX Leads ni borra el registro original.
+- Si se borra una copia de un registro histórico, se guarda una marca técnica sin PII (fuente + ID legado) para impedir que reaparezca en una importación posterior o por sincronización. El historial original queda disponible en la instalación del plugin anterior. Si se requiere eliminación por privacidad en ambos sistemas, borrar por separado también en TIBOX Leads.
+- La importación distingue entre **originales, copiados, excluidos y pendientes**. No vuelve a importar los registros excluidos manualmente.
+- El CSV utiliza **UTF-8 con BOM**, delimitador punto y coma para compatibilidad con Excel regional, y exportación incremental de 500 filas. Incluye respuestas JSON de formularios, referencias de WhatsApp, origen, campaña, dispositivo/navegador/SO y fecha original.
+- Se neutralizan valores peligrosos para evitar la ejecución de fórmulas de hojas de cálculo (CSV injection).
+- Exporta **solo los registros visibles según filtros**; si se desea una copia completa, seleccionar "Todos los meses", "Todos los canales" y "Todos los dispositivos", sin búsqueda.
+- La versión mantiene captura nativa y Web Vitals desactivadas por defecto; mantener TIBOX Leads activo en Prodata durante la transición. Recomendado instalar primero en staging y hacer respaldo completo.

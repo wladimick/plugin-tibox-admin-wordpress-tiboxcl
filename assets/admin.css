@@ -99,3 +99,9 @@ a.tbx-card:hover { border-color: var(--tbx-sky); transform: translateY(-2px); co
 .tbx-insights-bar-track { height: 7px; width: 100%; background: #edf1f7; border-radius: 6px; overflow: hidden; }
 .tbx-insights-bar-track span { display: block; height: 100%; border-radius: inherit; background: var(--tbx-sky); }
 @media (max-width: 950px) { .tbx-insights-grid { grid-template-columns: 1fr; } }
+
+/* Contactos: acción destructiva discreta, visible al pasar el cursor o enfocar. */
+.tbx-contact-delete { color: #b42318 !important; font-weight: 500; cursor: pointer; }
+.tbx-contact-delete:hover,.tbx-contact-delete:focus-visible { color: #861811 !important; text-decoration: underline; }
+.tbx-leads-actions { white-space: nowrap; text-align: right; }
+.tbx-leads-actions form { margin: 0; }

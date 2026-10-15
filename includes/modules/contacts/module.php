@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
 
 final class TBX_Contacts
 {
-    public const DB_VERSION = '1.1.0';
+    public const DB_VERSION = '1.2.0';
     private const DB_OPTION = 'tbx_contacts_db_version';
     private const LEGACY_SOURCE = 'tibox-leads';
     private const BATCH_SIZE = 100;
@@ -37,6 +37,12 @@ final class TBX_Contacts
         return $wpdb->prefix . 'tbx_leads';
     }
 
+    public static function suppressed_table(): string
+    {
+        global $wpdb;
+        return $wpdb->prefix . 'tbx_admin_contact_deleted';
+    }
+
     private static function exists(string $table): bool
     {
         global $wpdb;
@@ -49,6 +55,8 @@ final class TBX_Contacts
     {
         add_action('init', [self::class, 'install']);
         add_action('admin_post_tbx_contacts_import', [self::class, 'import_action']);
+        add_action('admin_post_tbx_contacts_delete', [self::class, 'delete_action']);
+        add_action('admin_post_tbx_contacts_export', [self::class, 'export_action']);
         // Tibox Leads dispara este hook DESPUÉS de persistir su propio registro.
         add_action('tbx_leads_inserted', [self::class, 'sync_legacy_entry'], 10, 1);
         TBX_Admin::register_tab('contactos', 'Contactos', [self::class, 'render'], 25);
@@ -56,7 +64,8 @@ final class TBX_Contacts
 
     public static function install(): void
     {
-        if (get_option(self::DB_OPTION) === self::DB_VERSION && self::exists(self::table())) {
+        if (get_option(self::DB_OPTION) === self::DB_VERSION &&
+            self::exists(self::table()) && self::exists(self::suppressed_table())) {
             return;
         }
         global $wpdb;
@@ -105,7 +114,17 @@ final class TBX_Contacts
             KEY ref_code (ref_code)
         ) {$charset};");
 
-        if (self::exists($table)) {
+        // Solo almacena claves históricas descartadas; nunca datos de contacto.
+        // Así una copia eliminada no reaparece al volver a importar Prodata.
+        $suppressed = self::suppressed_table();
+        dbDelta("CREATE TABLE {$suppressed} (
+            source_plugin varchar(40) NOT NULL,
+            legacy_id bigint(20) unsigned NOT NULL,
+            deleted_at datetime NOT NULL,
+            PRIMARY KEY  (source_plugin,legacy_id)
+        ) {$charset};");
+
+        if (self::exists($table) && self::exists($suppressed)) {
             update_option(self::DB_OPTION, self::DB_VERSION, false);
         }
     }
@@ -127,15 +146,18 @@ final class TBX_Contacts
         }
         $sql = "SELECT COUNT(*) FROM " . self::legacy_table() .
             " AS s LEFT JOIN " . self::table() .
-            " AS d ON d.source_plugin = %s AND d.legacy_id = s.id WHERE d.id IS NULL";
-        return (int) $wpdb->get_var($wpdb->prepare($sql, self::LEGACY_SOURCE));
+            " AS d ON d.source_plugin = %s AND d.legacy_id = s.id " .
+            "LEFT JOIN " . self::suppressed_table() .
+            " AS x ON x.source_plugin = %s AND x.legacy_id = s.id " .
+            "WHERE d.id IS NULL AND x.legacy_id IS NULL";
+        return (int) $wpdb->get_var($wpdb->prepare($sql, self::LEGACY_SOURCE, self::LEGACY_SOURCE));
     }
 
     private static function insert_legacy(array $row): bool
     {
         global $wpdb;
         $source_id = absint($row['id'] ?? 0);
-        if ($source_id === 0) {
+        if ($source_id === 0 || self::is_suppressed(self::LEGACY_SOURCE, $source_id)) {
             return false;
         }
         // El índice UNIQUE también protege contra solicitudes simultáneas.
@@ -161,7 +183,7 @@ final class TBX_Contacts
         if (!self::exists(self::table())) {
             self::install();
         }
-        if (!self::exists(self::table())) {
+        if (!self::exists(self::table()) || self::is_suppressed(self::LEGACY_SOURCE, $id)) {
             return;
         }
         global $wpdb;
@@ -204,8 +226,10 @@ final class TBX_Contacts
             'SELECT s.* FROM ' . self::legacy_table() . ' AS s LEFT JOIN ' .
                 self::table() .
                 ' AS d ON d.source_plugin = %s AND d.legacy_id = s.id ' .
-                'WHERE d.id IS NULL ORDER BY s.id ASC LIMIT %d',
-            self::LEGACY_SOURCE, self::BATCH_SIZE
+                'LEFT JOIN ' . self::suppressed_table() .
+                ' AS x ON x.source_plugin = %s AND x.legacy_id = s.id ' .
+                'WHERE d.id IS NULL AND x.legacy_id IS NULL ORDER BY s.id ASC LIMIT %d',
+            self::LEGACY_SOURCE, self::LEGACY_SOURCE, self::BATCH_SIZE
         );
         $rows = $wpdb->get_results($sql, ARRAY_A);
         $imported = 0;
@@ -224,6 +248,161 @@ final class TBX_Contacts
         exit;
     }
 
+    /**
+     * Una eliminación en TIBOX Admin no toca el plugin antiguo.
+     * La marca no almacena datos personales y detiene la reimportación.
+     */
+    public static function is_suppressed(string $source, int $id): bool
+    {
+        if ($id <= 0 || !self::exists(self::suppressed_table())) {
+            return false;
+        }
+        global $wpdb;
+        $sql = 'SELECT legacy_id FROM ' . self::suppressed_table() .
+            ' WHERE source_plugin = %s AND legacy_id = %d LIMIT 1';
+        return (bool) $wpdb->get_var($wpdb->prepare($sql, $source, $id));
+    }
+
+    /**
+     * Elimina físicamente SOLO la fila del panel TIBOX Admin.
+     * Nunca toca la tabla tbx_leads ni dispara envíos/mediciones.
+     */
+    public static function delete_contact(int $id): string
+    {
+        if ($id <= 0 || !self::exists(self::table()) || !self::exists(self::suppressed_table())) {
+            return 'error';
+        }
+        global $wpdb;
+        $row = $wpdb->get_row(
+            $wpdb->prepare('SELECT id,source_plugin,legacy_id FROM ' . self::table() . ' WHERE id=%d', $id),
+            ARRAY_A
+        );
+        if (!is_array($row)) {
+            return 'not_found';
+        }
+
+        $source = (string) $row['source_plugin'];
+        $legacy_id = (int) $row['legacy_id'];
+        if ($source === self::LEGACY_SOURCE && $legacy_id > 0) {
+            // Si el índice de borrados falla, no eliminamos la copia: evita reimportación accidental.
+            $marker = $wpdb->query($wpdb->prepare(
+                'INSERT INTO ' . self::suppressed_table() .
+                ' (source_plugin, legacy_id, deleted_at) VALUES (%s,%d,%s) ' .
+                'ON DUPLICATE KEY UPDATE deleted_at = VALUES(deleted_at)',
+                $source, $legacy_id, current_time('mysql', true)
+            ));
+            if ($marker === false) {
+                return 'error';
+            }
+        }
+        $removed = $wpdb->delete(self::table(), ['id' => $id], ['%d']);
+        return $removed === 1 ? 'deleted' : 'error';
+    }
+
+    public static function delete_action(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die('Sin permisos para borrar contactos.', '', ['response' => 403]);
+        }
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            wp_die('Método no permitido.', '', ['response' => 405]);
+        }
+        $id = isset($_POST['contact_id']) ? absint(wp_unslash($_POST['contact_id'])) : 0;
+        check_admin_referer('tbx_contacts_delete_' . $id);
+        self::install();
+        $status = self::delete_contact($id);
+        // Preserva filtros y paginación, sin aceptar claves ajenas.
+        $args = ['deleted' => $status];
+        foreach (['tipo','dispositivo','mes','s'] as $key) {
+            if (isset($_POST[$key]) && is_string($_POST[$key])) {
+                $args[$key] = sanitize_text_field(wp_unslash($_POST[$key]));
+            }
+        }
+        if (isset($_POST['paged'])) {
+            $args['paged'] = max(1, absint($_POST['paged']));
+        }
+        wp_safe_redirect(add_query_arg($args, TBX_Admin::tab_url('contactos')));
+        exit;
+    }
+
+    /** Prevención de fórmulas ejecutables al abrir CSV en Excel/Calc. */
+    public static function csv_safe($value): string
+    {
+        if (!is_scalar($value)) {
+            return '';
+        }
+        $v = (string) $value;
+        return preg_match('/^[\\s\\x00-\\x1F]*[=+\\-@]/u', $v) ? "'" . $v : $v;
+    }
+
+    public static function export_action(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die('Sin permisos para exportar contactos.', '', ['response' => 403]);
+        }
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
+            wp_die('Método no permitido.', '', ['response' => 405]);
+        }
+        check_admin_referer('tbx_contacts_export');
+        self::install();
+        if (!self::exists(self::table())) {
+            wp_die('Tabla de contactos no disponible.', '', ['response' => 500]);
+        }
+
+        global $wpdb;
+        [$where, $params] = self::filters();
+        nocache_headers();
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="tibox-contactos-' . gmdate('Y-m-d') . '.csv"');
+        header('X-Content-Type-Options: nosniff');
+        $handle = fopen('php://output', 'w');
+        if ($handle === false) {
+            wp_die('No se pudo abrir el archivo CSV.');
+        }
+        fwrite($handle, "\xEF\xBB\xBF");
+        $columns = [
+            'Fecha y hora', 'Canal', 'Tecnología', 'Contacto', 'Correo', 'Teléfono',
+            'Referencia WhatsApp', 'Destino', 'Botón', 'Ubicación',
+            'Página', 'Título de página', 'ID formulario', 'Formulario',
+            'Origen campaña', 'Medio', 'Campaña', 'Término', 'Contenido',
+            'ID clic anuncio', 'Referente', 'Página de entrada', 'Estado correo',
+            'Dispositivo', 'Navegador', 'Sistema operativo', 'Mensaje', 'Respuestas JSON',
+            'Fuente registro',
+        ];
+        fputcsv($handle, $columns, ';', '"', '');
+        $batch_size = 500;
+        $offset = 0;
+        // Descarga por lotes para no cargar todo el histórico en memoria.
+        do {
+            $sql = 'SELECT * FROM ' . self::table() . $where .
+                ' ORDER BY created_at DESC,id DESC LIMIT %d OFFSET %d';
+            $batch = $wpdb->get_results(
+                $wpdb->prepare($sql, ...array_merge($params, [$batch_size, $offset])),
+                ARRAY_A
+            );
+            foreach ((array) $batch as $r) {
+                $date = !empty($r['created_at'])
+                    ? get_date_from_gmt($r['created_at'], 'Y-m-d H:i:s')
+                    : '';
+                $values = [
+                    $date, $r['type'], $r['origin'], $r['name'], $r['email'],
+                    $r['phone'], $r['ref_code'], $r['destination'], $r['button_text'],
+                    $r['location'], $r['page_url'], $r['page_title'], $r['form_id'],
+                    $r['form_name'], $r['source'], $r['medium'], $r['campaign'],
+                    $r['term'], $r['content'], $r['click_id'], $r['referrer'],
+                    $r['landing_page'], $r['mail_status'], $r['device'],
+                    $r['browser'], $r['os'], $r['message'], $r['fields'],
+                    $r['source_plugin'],
+                ];
+                fputcsv($handle, array_map([self::class, 'csv_safe'], $values), ';', '"', '');
+            }
+            $offset += count((array) $batch);
+        } while (count((array) $batch) === $batch_size);
+
+        fclose($handle);
+        exit;
+    }
+
     private static function filters(): array
     {
         global $wpdb;
@@ -233,6 +412,10 @@ final class TBX_Contacts
             $type = '';
         }
         $search = isset($_GET['s']) ? mb_substr(sanitize_text_field(wp_unslash($_GET['s'])), 0, 120) : '';
+        $month = isset($_GET['mes']) && is_string($_GET['mes']) ? sanitize_text_field(wp_unslash($_GET['mes'])) : '';
+        if ($month !== '' && !preg_match('/^20[0-9]{2}-(0[1-9]|1[0-2])$/', $month)) {
+            $month = '';
+        }
         $device = isset($_GET['dispositivo']) ? sanitize_key(wp_unslash($_GET['dispositivo'])) : '';
         if (!in_array($device, ['', 'mobile', 'desktop', 'tablet', 'unknown'], true)) {
             $device = '';
@@ -243,6 +426,14 @@ final class TBX_Contacts
             $parts[] = 'type = %s';
             $params[] = $type;
         }
+        if ($month !== '') {
+            $start = DateTimeImmutable::createFromFormat('!Y-m', $month, new DateTimeZone('UTC'));
+            if ($start) {
+                $parts[] = 'created_at >= %s AND created_at < %s';
+                $params[] = $start->format('Y-m-d H:i:s');
+                $params[] = $start->modify('+1 month')->format('Y-m-d H:i:s');
+            }
+        }
         if ($device !== '') {
             $parts[] = 'device = %s';
             $params[] = $device;
@@ -252,7 +443,7 @@ final class TBX_Contacts
             $parts[] = '(name LIKE %s OR email LIKE %s OR phone LIKE %s OR ref_code LIKE %s OR form_name LIKE %s)';
             $params = array_merge($params, array_fill(0, 5, $like));
         }
-        return [$parts ? ' WHERE ' . implode(' AND ', $parts) : '', $params, $type, $search, $device];
+        return [$parts ? ' WHERE ' . implode(' AND ', $parts) : '', $params, $type, $search, $device, $month];
     }
 
     public static function render(): void
@@ -276,11 +467,17 @@ final class TBX_Contacts
         } else {
             $total = self::legacy_count();
             $pending = self::pending_count();
-            $copied = max(0, $total - $pending);
+            $suppressed = (int) $wpdb->get_var($wpdb->prepare(
+                'SELECT COUNT(*) FROM ' . self::legacy_table() . ' AS s INNER JOIN ' .
+                self::suppressed_table() . ' AS x ON x.legacy_id = s.id AND x.source_plugin = %s',
+                self::LEGACY_SOURCE
+            ));
+            $copied = max(0, $total - $pending - $suppressed);
             printf(
-                '<p>Encontrados en el plugin anterior: <strong>%1$s</strong> · Copiados: <strong>%2$s</strong> · Pendientes: <strong>%3$s</strong></p>',
+                '<p>Originales: <strong>%1$s</strong> · En Contactos: <strong>%2$s</strong> · Excluidos manualmente: <strong>%3$s</strong> · Pendientes: <strong>%4$s</strong></p>',
                 esc_html(number_format_i18n($total)),
                 esc_html(number_format_i18n($copied)),
+                esc_html(number_format_i18n($suppressed)),
                 esc_html(number_format_i18n($pending))
             );
             $by_type = $wpdb->get_results(
@@ -320,14 +517,14 @@ final class TBX_Contacts
             } else {
                 echo '<p><strong>Historial sincronizado.</strong> No quedan registros pendientes en la tabla anterior.</p>';
             }
-            echo '<p class="tbx-muted">La importación conserva las fechas y las referencias originales. Es segura para repetir: los IDs ya importados no se duplican. Los nuevos registros del plugin antiguo se sincronizan automáticamente mientras ambos módulos estén activos.</p>';
+            echo '<p class="tbx-muted">La importación conserva fechas y referencias. Puedes repetirla sin duplicados. Los contactos borrados manualmente de TIBOX Admin quedan excluidos de futuras importaciones; el registro del plugin antiguo no se modifica.</p>';
         }
         echo '</div>';
 
         TBX_Native_Contacts::render_settings();
         TBX_Native_Contacts::render_wa_settings();
 
-        [$where, $params, $type, $search, $device] = self::filters();
+        [$where, $params, $type, $search, $device, $month] = self::filters();
         $per_page = 50;
         $page = isset($_GET['paged']) ? max(1, absint(wp_unslash($_GET['paged']))) : 1;
         $count_sql = 'SELECT COUNT(*) FROM ' . $table . $where;
@@ -341,6 +538,17 @@ final class TBX_Contacts
         echo '<h2 class="tbx-h2">Historial de contactos</h2>';
         echo '<form method="get" class="tbx-filters">';
         echo '<input type="hidden" name="page" value="tibox-admin-contactos">';
+        $months = $wpdb->get_col('SELECT DATE_FORMAT(created_at, "%Y-%m") AS ym FROM ' .
+            self::table() . ' GROUP BY ym ORDER BY ym DESC LIMIT 36');
+        echo '<label>Mes <select name="mes"><option value="">Todos los meses</option>';
+        foreach ((array) $months as $ym) {
+            if (!is_string($ym) || !preg_match('/^20[0-9]{2}-(0[1-9]|1[0-2])$/', $ym)) {
+                continue;
+            }
+            echo '<option value="' . esc_attr($ym) . '"' . selected($month, $ym, false) . '>' .
+                esc_html(wp_date('F Y', strtotime($ym . '-01'))) . '</option>';
+        }
+        echo '</select></label>';
         echo '<label>Canal <select name="tipo">';
         $types = ['' => 'Todos', 'form' => 'Formulario', 'whatsapp' => 'WhatsApp', 'phone' => 'Teléfono', 'email' => 'Correo'];
         foreach ($types as $k => $label) {
@@ -356,6 +564,29 @@ final class TBX_Contacts
             '" placeholder="Nombre, correo, referencia…"></label>';
         submit_button('Filtrar', 'secondary', '', false);
         echo '</form>';
+        $export_url = wp_nonce_url(
+            add_query_arg([
+                'action' => 'tbx_contacts_export', 'tipo' => $type, 'mes' => $month,
+                'dispositivo' => $device, 's' => $search,
+            ], admin_url('admin-post.php')),
+            'tbx_contacts_export'
+        );
+        echo '<p><a class="button button-primary" href="' . esc_url($export_url) .
+            '">Exportar CSV</a> <span class="tbx-muted">Incluye los registros del filtro seleccionado, con respuestas, referencias WhatsApp y origen de campañas.</span></p>';
+        $deleted = isset($_GET['deleted']) && is_string($_GET['deleted'])
+            ? sanitize_key(wp_unslash($_GET['deleted'])) : '';
+        if ($deleted !== '') {
+            $msg = [
+                'deleted' => 'Registro eliminado de TIBOX Admin. El historial del plugin antiguo sigue intacto.',
+                'not_found' => 'El contacto ya no está disponible.',
+                'error' => 'No se pudo borrar el contacto. Comprueba los permisos y la base de datos.',
+            ];
+            $cls = $deleted === 'deleted' ? 'success' : 'warning';
+            if (isset($msg[$deleted])) {
+                echo '<div class="notice notice-' . esc_attr($cls) .
+                    ' inline"><p>' . esc_html($msg[$deleted]) . '</p></div>';
+            }
+        }
         echo '<p class="tbx-muted">' . esc_html(number_format_i18n($total)) . ' registros según el filtro. Los clics representan intención de contacto, no conversaciones confirmadas.</p>';
 
         if (!$rows) {
@@ -363,7 +594,7 @@ final class TBX_Contacts
             return;
         }
         echo '<div class="tbx-leads-scroll"><table class="widefat striped tbx-table tbx-leads-table"><thead><tr>';
-        echo '<th>Fecha</th><th>Canal</th><th>Contacto</th><th>Dónde ocurrió</th><th>Dispositivo</th><th>Origen</th><th>Detalles</th>';
+        echo '<th>Fecha</th><th>Canal</th><th>Contacto</th><th>Dónde ocurrió</th><th>Dispositivo</th><th>Origen</th><th>Detalles</th><th>Acciones</th>';
         echo '</tr></thead><tbody>';
         foreach ($rows as $r) {
             $kind = $types[$r['type']] ?? $r['type'];
@@ -416,12 +647,22 @@ final class TBX_Contacts
                 }
             }
             echo '</div></details></td>';
+            echo '<td class="tbx-leads-actions"><form method="post" action="' .
+                esc_url(admin_url('admin-post.php')) .
+                '" onsubmit="return confirm(&quot;¿Borrar este registro de TIBOX Admin? El registro del plugin antiguo no se eliminará.&quot;);">';
+            echo '<input type="hidden" name="action" value="tbx_contacts_delete">';
+            echo '<input type="hidden" name="contact_id" value="' . esc_attr((string) $r['id']) . '">';
+            foreach (['tipo' => $type, 'dispositivo' => $device, 'mes' => $month, 's' => $search, 'paged' => $page] as $key => $value) {
+                echo '<input type="hidden" name="' . esc_attr($key) . '" value="' . esc_attr((string) $value) . '">';
+            }
+            wp_nonce_field('tbx_contacts_delete_' . (int) $r['id']);
+            echo '<button type="submit" class="button-link-delete tbx-contact-delete">Borrar</button></form></td>';
             echo '</tr>';
         }
         echo '</tbody></table></div>';
         $pages = (int) ceil($total / $per_page);
         if ($pages > 1) {
-            $args = ['page' => 'tibox-admin-contactos', 'tipo' => $type, 's' => $search, 'dispositivo' => $device];
+            $args = ['page' => 'tibox-admin-contactos', 'tipo' => $type, 's' => $search, 'mes' => $month, 'dispositivo' => $device];
             $links = paginate_links([
                 'base' => add_query_arg('paged', '%#%', add_query_arg($args, admin_url('admin.php'))),
                 'current' => $page,
