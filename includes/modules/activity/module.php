@@ -12,6 +12,7 @@ if (!defined('ABSPATH')) {
 }
 
 require_once __DIR__ . '/class-tbx-activity-insights.php';
+require_once __DIR__ . '/class-tbx-web-vitals.php';
 
 final class TBX_Activity
 {
@@ -99,6 +100,7 @@ final class TBX_Activity
         $limit = wp_date('Y-m-d', strtotime('-' . self::RETENTION_DAYS . ' days'));
         $wpdb->query($wpdb->prepare('DELETE FROM ' . self::table() . ' WHERE day < %s', $limit));
         TBX_Activity_Insights::purge($limit);
+        TBX_Web_Vitals::purge($limit);
     }
 
     /* ---------- Front ---------- */
@@ -288,6 +290,7 @@ final class TBX_Activity
             return;
         }
 
+        TBX_Web_Vitals::render_settings();
         echo '<h2 class="tbx-h2">Resumen histórico · Todos los dispositivos</h2>';
         echo '<div class="tbx-cards">';
         foreach (['page_view', 'cta_click', 'form_start', 'form_submit', 'wpforms_submit', 'phone_click', 'email_click', 'whatsapp_click', 'portal_click', 'form_error'] as $e) {
@@ -297,6 +300,11 @@ final class TBX_Activity
 
         // Métricas nuevas segmentadas, visibles antes de las tablas históricas.
         TBX_Activity_Insights::render($since, $days, $path_filter);
+        $device_filter = isset($_GET['dispositivo']) ? sanitize_key(wp_unslash($_GET['dispositivo'])) : '';
+        if (!in_array($device_filter, ['', 'mobile', 'desktop', 'tablet', 'unknown'], true)) {
+            $device_filter = '';
+        }
+        TBX_Web_Vitals::render_dashboard($since, $path_filter, $device_filter);
 
         /* Embudo de landings */
         $funnel = $wpdb->get_results($wpdb->prepare(

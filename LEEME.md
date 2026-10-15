@@ -123,3 +123,16 @@ Esta rama depende del módulo Contactos en PR #3 y del rediseño de leads en PR 
 5. Fusionar e instalar en producción solo cuando se terminen pruebas funcionales.
 
 **Aún pendiente:** pruebas con WordPress real, captura nativa de todos los formularios en Contactos sin depender del plugin antiguo, Web Vitals (LCP/CLS/INP) y configuración del consentimiento según el sitio.
+
+
+## Core Web Vitals — Fase opt-in (rama de desarrollo)
+
+- Activación desde **TIBOX Admin > Actividad del sitio > Medición de rendimiento**. Desactivado de forma predeterminada.
+- Usa web-vitals 5.3.0 de GoogleChrome mediante CDN externo versionado. La descarga de esa dependencia solo ocurre cuando se habilita la función y el cliente no ha declarado Global Privacy Control ni TBX_ANALYTICS_ALLOWED === false al momento de cargar el script. El operador debe validar disponibilidad, privacidad y política de consentimiento antes del despliegue; idealmente se debe servir una copia local del bundle en una versión futura.
+- Se envían muestras LCP (ms), INP (ms) y CLS (puntos) al endpoint local. El servidor **descarta sus valores después de clasificarlos**: solo persiste totales diarios por página sin query, dispositivo y categoría (bueno/mejorable/deficiente).
+- Umbrales: LCP <= 2.5 s / <= 4 s, INP <= 200 ms / <= 500 ms, CLS <= 0.1 / <= 0.25. Se aplican con criterios inclusivos.
+- No se guardan IP, UA, cookies, identificador de visita o valores individuales. Retención: 400 días.
+- El tablero presenta % de muestras buenas por métrica, pero **no calcula percentil 75**; por tanto no debe compararse directamente con la calificación oficial de Core Web Vitals de Google.
+- Como INP se registra solamente cuando el navegador tiene interacciones válidas, puede tener menos muestras que LCP/CLS.
+- Controles: permiso manage_options y nonce para cambios; rechazo de fuentes cross-origin, navegadores automáticos y abuso de frecuencia en la API.
+- Estado: pruebas automatizadas de parser, umbrales, consentimiento y envío por beacon. Aún debe validarse end-to-end con WordPress, CMP y Tag Assistant antes de activarlo en Prodata.
