@@ -279,6 +279,7 @@ final class TBX_Activity
             return;
         }
 
+        echo '<h2 class="tbx-h2">Resumen histórico · Todos los dispositivos</h2>';
         echo '<div class="tbx-cards">';
         foreach (['page_view', 'cta_click', 'form_start', 'form_submit', 'wpforms_submit', 'phone_click', 'email_click', 'whatsapp_click', 'portal_click', 'form_error'] as $e) {
             printf('<div class="tbx-card"><span class="tbx-card__num">%s</span><span class="tbx-card__lbl">%s</span></div>', esc_html(number_format_i18n($get($e))), esc_html(self::EVENTS[$e]));
