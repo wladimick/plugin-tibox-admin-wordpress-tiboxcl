@@ -1,0 +1,350 @@
+<?php
+/**
+ * Captación de formularios confirmados directamente desde WordPress.
+ *
+ * Opt-in y mutuamente excluyente con el capturador Tibox Leads 1.0.0.
+ * Guarda contactos en la MISMA tabla que el importador histórico, sin modificar
+ * ni borrar los datos importados; no envía correos, GA4 ni eventos adicionales.
+ */
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+final class TBX_Native_Contacts
+{
+    public const OPTION = 'tbx_contacts_native_enabled';
+    private const SEQUENCE_VERSION = '1.0.0';
+    private const SEQUENCE_OPTION = 'tbx_native_contact_sequence_version';
+    private static array $seen = [];
+
+    public static function sequence_table(): string
+    {
+        global $wpdb;
+        return $wpdb->prefix . 'tbx_admin_contact_sequence';
+    }
+
+    public static function enabled(): bool
+    {
+        return get_option(self::OPTION, '0') === '1';
+    }
+
+    public static function legacy_active(): bool
+    {
+        return function_exists('tbx_leads_insert');
+    }
+
+    public static function can_capture(): bool
+    {
+        // Incluso si se configuró "activo" antes, jamás duplicar el plugin antiguo.
+        return self::enabled() && !self::legacy_active() && !is_user_logged_in();
+    }
+
+    public static function init(): void
+    {
+        add_action('init', [self::class, 'install']);
+        add_action('admin_post_tbx_contacts_native_settings', [self::class, 'save_settings']);
+        add_action('wpforms_process_complete', [self::class, 'wpforms'], 20, 4);
+        add_action('elementor_pro/forms/new_record', [self::class, 'elementor'], 20, 2);
+        add_action('wpcf7_mail_sent', [self::class, 'contact_form_7'], 20, 1);
+    }
+
+    public static function install(): void
+    {
+        if (get_option(self::SEQUENCE_OPTION) === self::SEQUENCE_VERSION) {
+            return;
+        }
+        global $wpdb;
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        $t = self::sequence_table();
+        $charset = $wpdb->get_charset_collate();
+        // No guarda datos personales: solo reserva IDs bajo la fuente "native".
+        dbDelta("CREATE TABLE {$t} (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            created_at datetime NOT NULL,
+            PRIMARY KEY  (id)
+        ) {$charset};");
+        if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($t))) === $t) {
+            update_option(self::SEQUENCE_OPTION, self::SEQUENCE_VERSION, false);
+        }
+    }
+
+    private static function scalar($value, int $max = 190): string
+    {
+        if (!is_scalar($value)) {
+            return '';
+        }
+        return mb_substr(sanitize_text_field((string) $value), 0, $max);
+    }
+
+    private static function is_sensitive(string $name, string $type): bool
+    {
+        return (bool) preg_match('/pass|token|nonce|captcha|credit|card|tarjeta|cvv|clave|password|file|upload|firma|signature|payment|adjunto/i', $name . ' ' . $type);
+    }
+
+    /**
+     * Retiene únicamente campos de texto no sensibles y que el cliente envió.
+     * No conserva contraseñas, archivos, tokens ni campos ocultos de sistemas.
+     */
+    public static function normalize_fields(array $fields): array
+    {
+        $out = [];
+        foreach (array_slice($fields, 0, 100) as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $name = self::scalar($item['n'] ?? '', 100);
+            $label = self::scalar($item['l'] ?? '', 100);
+            $type = sanitize_key(self::scalar($item['t'] ?? '', 30));
+            if ($name === '' || str_starts_with($name, '_') || self::is_sensitive($name . ' ' . $label, $type)) {
+                continue;
+            }
+            $raw = $item['v'] ?? '';
+            if (!is_scalar($raw)) {
+                continue;
+            }
+            $value = mb_substr(sanitize_textarea_field((string) $raw), 0, 2000);
+            if ($value === '') {
+                continue;
+            }
+            $out[] = ['n' => $name, 'l' => $label ?: $name, 'v' => $value, 't' => $type];
+        }
+        return $out;
+    }
+
+    public static function extract_contact(array $fields): array
+    {
+        $contact = ['name' => '', 'email' => '', 'phone' => '', 'message' => ''];
+        foreach ($fields as $f) {
+            $key = mb_strtolower(($f['n'] ?? '') . ' ' . ($f['l'] ?? ''));
+            $type = $f['t'] ?? '';
+            $value = (string) ($f['v'] ?? '');
+            if ($contact['email'] === '' && ($type === 'email' || is_email($value))) {
+                $contact['email'] = sanitize_email($value);
+            } elseif ($contact['phone'] === '' &&
+                (in_array($type, ['tel', 'phone'], true) || preg_match('/tel|fono|phone|celular|movil|móvil|whats/', $key))) {
+                $contact['phone'] = self::scalar($value, 60);
+            } elseif ($contact['name'] === '' &&
+                (in_array($type, ['name', 'text'], true) || preg_match('/nombre|name/', $key)) &&
+                preg_match('/nombre|name/', $key) &&
+                !preg_match('/empresa|company|instituci|colegio|usuario|user/', $key)) {
+                $contact['name'] = self::scalar($value, 190);
+            } elseif ($contact['message'] === '' &&
+                ($type === 'textarea' || preg_match('/mensaje|message|comentario|consulta/', $key))) {
+                $contact['message'] = mb_substr($value, 0, 5000);
+            }
+        }
+        return $contact;
+    }
+
+    private static function posted(string $field): string
+    {
+        $val = isset($_POST[$field]) ? wp_unslash($_POST[$field]) : '';
+        return self::scalar($val, 190);
+    }
+
+    private static function origin_url(): string
+    {
+        // Para no guardar URLs con correos, tokens u otros query params:
+        // solo ruta en el mismo host del WordPress.
+        $raw = self::posted('page_url');
+        if ($raw === '') {
+            $raw = (string) wp_get_referer();
+        }
+        $home_host = (string) wp_parse_url(home_url('/'), PHP_URL_HOST);
+        $host = (string) wp_parse_url($raw, PHP_URL_HOST);
+        if ($host === '' || strcasecmp($home_host, $host) !== 0) {
+            return '';
+        }
+        $path = TBX_Web_Vitals::normalize_path($raw);
+        if ($path === '/[redactado]/') {
+            return '';
+        }
+        return home_url($path);
+    }
+
+    private static function attribution(): array
+    {
+        $referrer = (string) wp_get_referer();
+        $query = (string) wp_parse_url($referrer, PHP_URL_QUERY);
+        $from_url = [];
+        if ($query !== '') {
+            parse_str($query, $from_url);
+        }
+        $out = [];
+        foreach (['source', 'medium', 'campaign', 'term', 'content'] as $key) {
+            $posted = self::posted('utm_' . $key);
+            $raw = $posted !== '' ? $posted : ($from_url['utm_' . $key] ?? '');
+            $out[$key] = self::scalar($raw, 150);
+        }
+        return $out;
+    }
+
+    private static function record(string $origin, string $form_id, string $form_name, array $raw): void
+    {
+        if (!self::can_capture()) {
+            return;
+        }
+        $fields = self::normalize_fields($raw);
+        $contact = self::extract_contact($fields);
+        if (!$fields || (!array_filter($contact) && !$form_id)) {
+            return;
+        }
+        $form_id = self::scalar($form_id, 100);
+        $idempotency = hash('sha256', wp_json_encode([$origin, $form_id, $fields]));
+        if (isset(self::$seen[$idempotency])) {
+            return; // hooks duplicados en la misma solicitud.
+        }
+        self::$seen[$idempotency] = true;
+
+        self::install();
+        TBX_Contacts::install();
+        global $wpdb;
+        // Fuente nativa mantiene un contador propio; único, atómico y sin PII.
+        $reserved = $wpdb->insert(self::sequence_table(), ['created_at' => current_time('mysql', true)], ['%s']);
+        if ($reserved !== 1) {
+            error_log('[TIBOX Contacts] No se pudo reservar ID nativo.');
+            return;
+        }
+        $id = (int) $wpdb->insert_id;
+        $now = current_time('mysql', true);
+        $data = [
+            'source_plugin' => 'tibox-admin-native',
+            'legacy_id' => $id,
+            'imported_at' => $now,
+            'created_at' => $now,
+            'type' => 'form',
+            'origin' => $origin,
+            'form_id' => $form_id,
+            'form_name' => self::scalar($form_name, 190),
+            'page_url' => self::origin_url(),
+            'page_title' => self::posted('page_title'),
+            'name' => $contact['name'],
+            'email' => $contact['email'],
+            'phone' => $contact['phone'],
+            'message' => $contact['message'],
+            'fields' => wp_json_encode($fields, JSON_UNESCAPED_UNICODE),
+            ...self::attribution(),
+            ...TBX_Analytics_Context::classify((string) ($_SERVER['HTTP_USER_AGENT'] ?? '')),
+        ];
+        if ($wpdb->insert(TBX_Contacts::table(), $data) !== 1) {
+            error_log('[TIBOX Contacts] No se pudo insertar el formulario confirmado.');
+        }
+    }
+
+    public static function wpforms($fields, $entry, $form_data, $entry_id): void
+    {
+        if (!self::can_capture()) {
+            return;
+        }
+        $raw = [];
+        foreach ((array) $fields as $f) {
+            if (!is_array($f)) {
+                continue;
+            }
+            $raw[] = [
+                'n' => 'field_' . self::scalar($f['id'] ?? '', 30),
+                'l' => $f['name'] ?? '',
+                'v' => $f['value'] ?? '',
+                't' => $f['type'] ?? '',
+            ];
+        }
+        self::record('wpforms', self::scalar($form_data['id'] ?? '', 100),
+            self::scalar($form_data['settings']['form_title'] ?? '', 190), $raw);
+    }
+
+    public static function elementor($record, $handler = null): void
+    {
+        if (!self::can_capture() || !is_object($record) || !method_exists($record, 'get')) {
+            return;
+        }
+        $raw = [];
+        foreach ((array) $record->get('fields') as $id => $field) {
+            if (!is_array($field)) {
+                continue;
+            }
+            $raw[] = [
+                'n' => $id,
+                'l' => $field['title'] ?? $id,
+                'v' => $field['value'] ?? '',
+                't' => $field['type'] ?? '',
+            ];
+        }
+        self::record('elementor',
+            method_exists($record, 'get_form_settings') ? self::scalar($record->get_form_settings('id'), 100) : '',
+            method_exists($record, 'get_form_settings') ? self::scalar($record->get_form_settings('form_name'), 190) : '',
+            $raw
+        );
+    }
+
+    public static function contact_form_7($contact_form): void
+    {
+        if (!self::can_capture() || !class_exists('WPCF7_Submission') ||
+            !is_object($contact_form) || !method_exists($contact_form, 'id')) {
+            return;
+        }
+        $submission = WPCF7_Submission::get_instance();
+        if (!$submission) {
+            return;
+        }
+        $raw = [];
+        foreach ((array) $submission->get_posted_data() as $name => $value) {
+            if (!is_string($name) || str_starts_with($name, '_')) {
+                continue;
+            }
+            $raw[] = [
+                'n' => $name,
+                'l' => $name,
+                'v' => $value,
+                't' => str_contains(mb_strtolower($name), 'mail') ? 'email' : 'text',
+            ];
+        }
+        self::record('cf7', (string) $contact_form->id(),
+            method_exists($contact_form, 'title') ? (string) $contact_form->title() : '', $raw);
+    }
+
+    public static function save_settings(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die('Sin permisos.', '', ['response' => 403]);
+        }
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            wp_die('Método no permitido.', '', ['response' => 405]);
+        }
+        check_admin_referer('tbx_contacts_native_settings');
+        $enable = !empty($_POST['native_enabled']);
+        if ($enable && self::legacy_active()) {
+            update_option(self::OPTION, '0', false);
+            wp_safe_redirect(add_query_arg('native', 'legacy_active', TBX_Admin::tab_url('contactos')));
+            exit;
+        }
+        update_option(self::OPTION, $enable ? '1' : '0', false);
+        wp_safe_redirect(add_query_arg('native', 'saved', TBX_Admin::tab_url('contactos')));
+        exit;
+    }
+
+    public static function render_settings(): void
+    {
+        echo '<div class="tbx-import-card"><h2>Captura directa de formularios</h2>';
+        echo '<p>Registra únicamente envíos confirmados por WPForms, Elementor Forms y Contact Form 7 en esta misma tabla de Contactos, sin correos ni conversiones duplicadas de GTM.</p>';
+        if (self::legacy_active()) {
+            echo '<div class="notice notice-warning inline"><p>El plugin original TIBOX Leads sigue activo: la captura directa está bloqueada para evitar duplicados. Mantén este plugin antiguo durante la importación del historial.</p></div>';
+        }
+        if (isset($_GET['native']) && sanitize_key(wp_unslash($_GET['native'])) === 'saved') {
+            echo '<div class="notice notice-success inline"><p>Configuración guardada.</p></div>';
+        }
+        echo '<form action="' . esc_url(admin_url('admin-post.php')) . '" method="post">';
+        echo '<input type="hidden" name="action" value="tbx_contacts_native_settings">';
+        wp_nonce_field('tbx_contacts_native_settings');
+        echo '<label><input type="checkbox" name="native_enabled" value="1"' .
+            checked(self::enabled(), true, false) . (self::legacy_active() ? ' disabled' : '') .
+            '> Registrar formularios directamente desde TIBOX Admin</label>';
+        if (self::legacy_active()) {
+            echo '<input type="hidden" name="native_enabled" value="0">';
+        }
+        echo '<p class="tbx-muted">Desactivada por defecto. Primero importa y comprueba el historial, realiza un respaldo y desactiva TIBOX Leads; después habilita esta opción y prueba un formulario de cada tipo. No requiere mantener el plugin anterior.</p>';
+        submit_button('Guardar configuración', 'secondary', 'submit', false);
+        echo '</form></div>';
+    }
+}
+
+TBX_Native_Contacts::init();
