@@ -2,7 +2,7 @@ name: Package TIBOX Admin beta
 on:
   push:
     branches:
-      - feature/unified-contacts-inbox-1-9
+      - fix/independent-whatsapp-button-1-9-1
   workflow_dispatch:
 permissions:
   contents: write
@@ -25,6 +25,7 @@ jobs:
           node tests/native-wa-button-smoke.cjs
           php tests/contacts-delete-csv-smoke.php
           php tests/unified-inbox-sources-smoke.php
+          php tests/whatsapp-independent-smoke.php
       - name: Build WordPress ZIP with stable tibox-admin folder
         run: |
           set -euo pipefail
@@ -32,31 +33,31 @@ jobs:
           cp tibox-admin.php LEEME.md package/tibox-admin/
           cp -R includes assets package/tibox-admin/
           cd package
-          zip -r -q -X ../tibox-admin-1.9.0-beta.zip tibox-admin
+          zip -r -q -X ../tibox-admin-1.9.1-beta.zip tibox-admin
           cd ..
-          unzip -l tibox-admin-1.9.0-beta.zip | grep 'tibox-admin/tibox-admin.php'
-          unzip -l tibox-admin-1.9.0-beta.zip | grep 'tibox-admin/includes/modules/contacts/class-tbx-native-capture.php'
-          unzip -l tibox-admin-1.9.0-beta.zip | grep 'tibox-admin/assets/tibox-contact-clicks.js'
+          unzip -l tibox-admin-1.9.1-beta.zip | grep 'tibox-admin/tibox-admin.php'
+          unzip -l tibox-admin-1.9.1-beta.zip | grep 'tibox-admin/includes/modules/contacts/class-tbx-native-capture.php'
+          unzip -l tibox-admin-1.9.1-beta.zip | grep 'tibox-admin/assets/tibox-contact-clicks.js'
       - name: Upload package as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tibox-admin-1.9.0-beta-installer
-          path: tibox-admin-1.9.0-beta.zip
+          name: tibox-admin-1.9.1-beta-installer
+          path: tibox-admin-1.9.1-beta.zip
           retention-days: 30
       - name: Publish pre-release for direct download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="v1.9.0-beta.1"
-          ASSET="tibox-admin-1.9.0-beta.zip"
+          TAG="v1.9.1-beta.1"
+          ASSET="tibox-admin-1.9.1-beta.zip"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$ASSET" --clobber
           else
             gh release create "$TAG" "$ASSET" \
               --target "$GITHUB_SHA" \
-              --title "TIBOX Admin 1.9 beta — SOLO PRUEBAS" \
+              --title "TIBOX Admin 1.9.1 beta — SOLO PRUEBAS" \
               --prerelease \
-              --notes "Paquete de desarrollo para staging de Prodata y TIBOX. Incluye bandeja única Contactos, estados comerciales, respuestas y filtros por formulario, importador histórico WPForms y landings, además de funciones beta anteriores. No ha sido validado funcionalmente en WordPress real. Respaldar antes, mantener TIBOX Leads activo en Prodata y revisar las opciones de módulos."
+              --notes "Paquete de desarrollo para staging de Prodata y TIBOX. Corrige botón WhatsApp flotante independiente de Captura directa y compatible con TIBOX Leads antiguo, manteniendo referencias y sin duplicar botones. No ha sido validado funcionalmente en WordPress real. Respaldar antes, mantener TIBOX Leads activo en Prodata y revisar las opciones de módulos."
           fi
           gh release view "$TAG" --json url,assets
