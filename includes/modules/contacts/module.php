@@ -659,10 +659,7 @@ final class TBX_Contacts
         }
         echo '</select></label>';
         $forms = $wpdb->get_results(
-            'SELECT origin,form_id,MAX(form_name) form_name,COUNT(*) n FROM ' .
-            self::table() .
-            ' WHERE type = %s GROUP BY origin,form_id ORDER BY n DESC LIMIT 150' === ''
-            ? '' : $wpdb->prepare(
+            $wpdb->prepare(
                 'SELECT origin,form_id,MAX(form_name) form_name,COUNT(*) n FROM ' .
                 self::table() . ' WHERE type = %s GROUP BY origin,form_id ORDER BY n DESC LIMIT 150',
                 'form'
