@@ -27,6 +27,7 @@ $c = TBX_Native_Contacts::extract_contact($fields);
 $expected = ['name' => 'Ana Soto', 'email' => 'ana@example.cl', 'phone' => '+56998765432', 'message' => 'Necesito una cotización'];
 if ($c !== $expected) { fwrite(STDERR, 'Contact extraction mismatch: '.json_encode($c).PHP_EOL); exit(1); }
 if (!TBX_Native_Contacts::can_capture()) { fwrite(STDERR, 'Native capture should be enabled without legacy'.PHP_EOL); exit(1); }
-function tbx_leads_insert($data) { return 0; }
+// Define legacy function only after first assertion (PHP precompiles ordinary function declarations).
+eval('function tbx_leads_insert($data) { return 0; }');
 if (TBX_Native_Contacts::can_capture()) { fwrite(STDERR, 'Native capture must block when legacy is present'.PHP_EOL); exit(1); }
 echo "Native form capture smoke tests passed\n";
