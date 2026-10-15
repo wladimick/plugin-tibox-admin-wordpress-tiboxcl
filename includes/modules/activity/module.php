@@ -11,9 +11,11 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+require_once __DIR__ . '/class-tbx-activity-insights.php';
+
 final class TBX_Activity
 {
-    public const DB_VERSION = '1.0.0';
+    public const DB_VERSION = '1.1.0';
     public const DB_OPTION = 'tbx_activity_db_version';
     public const RETENTION_DAYS = 400;
 
@@ -32,6 +34,10 @@ final class TBX_Activity
         'faq_open' => 'Preguntas frecuentes abiertas',
         'section_view' => 'Secciones vistas',
         'scroll_depth' => 'Profundidad de scroll',
+        'form_success' => 'Formularios confirmados',
+        'download_click' => 'Descargas de archivos',
+        'outbound_click' => 'Enlaces externos',
+        'engaged_15s' => 'Interacción activa (15 segundos)',
     ];
 
     public static function table(): string
@@ -60,6 +66,7 @@ final class TBX_Activity
     public static function maybe_install(): void
     {
         if (get_option(self::DB_OPTION) === self::DB_VERSION) {
+            TBX_Activity_Insights::install();
             return;
         }
         global $wpdb;
@@ -81,6 +88,7 @@ final class TBX_Activity
         ) {$charset};");
 
         update_option(self::DB_OPTION, self::DB_VERSION, false);
+        TBX_Activity_Insights::install();
     }
 
     public static function purge(): void
@@ -88,12 +96,18 @@ final class TBX_Activity
         global $wpdb;
         $limit = wp_date('Y-m-d', strtotime('-' . self::RETENTION_DAYS . ' days'));
         $wpdb->query($wpdb->prepare('DELETE FROM ' . self::table() . ' WHERE day < %s', $limit));
+        TBX_Activity_Insights::purge($limit);
     }
 
     /* ---------- Front ---------- */
 
     public static function enqueue(): void
     {
+        // Evitar contaminar métricas con revisiones de editores y administradores.
+        // No afecta a los visitantes anónimos.
+        if (is_user_logged_in()) {
+            return;
+        }
         $file = TBX_ADMIN_DIR . 'assets/tibox-tracking.js';
         wp_enqueue_script(
             'tbx-tracking',
@@ -122,6 +136,11 @@ final class TBX_Activity
 
     public static function handle(WP_REST_Request $request): WP_REST_Response
     {
+        // Defensa adicional si la solicitud REST llega autenticada.
+        if (is_user_logged_in()) {
+            return new WP_REST_Response(['ok' => true, 'saved' => 0], 202);
+        }
+
         /* Mismo sitio */
         $host = wp_parse_url(home_url('/'), PHP_URL_HOST);
         $origin = $request->get_header('origin') ?: $request->get_header('referer');
@@ -149,6 +168,7 @@ final class TBX_Activity
 
         $path = self::clean_path((string) ($body['path'] ?? '/'));
         $events = array_slice($body['events'], 0, 40);
+        $campaign = (isset($body['campaign']) && is_array($body['campaign'])) ? $body['campaign'] : [];
         set_transient($key, $used + count($events), MINUTE_IN_SECONDS);
 
         global $wpdb;
@@ -175,6 +195,8 @@ final class TBX_Activity
                  ON DUPLICATE KEY UPDATE hits = hits + 1",
                 $day, $name, $path, $location, $label
             ));
+            // Independiente de la tabla anterior: NO migra ni altera sus filas.
+            TBX_Activity_Insights::record($day, $name, $path, $location, $label, $ua, $campaign);
             $saved++;
         }
 
@@ -233,6 +255,7 @@ final class TBX_Activity
         $paths = $wpdb->get_col($wpdb->prepare("SELECT page_path FROM {$t} WHERE day >= %s AND event='page_view' GROUP BY page_path ORDER BY SUM(hits) DESC LIMIT 60", $since));
         echo '<form method="get" class="tbx-filters">';
         echo '<input type="hidden" name="page" value="tibox-admin-actividad">';
+        echo '<input type="hidden" name="dispositivo" value="' . esc_attr(isset($_GET['dispositivo']) ? sanitize_key(wp_unslash($_GET['dispositivo'])) : '') . '">';
         echo '<label>Periodo <select name="dias">';
         foreach ([7 => 'Últimos 7 días', 30 => 'Últimos 30 días', 90 => 'Últimos 90 días'] as $v => $l) {
             printf('<option value="%d"%s>%s</option>', $v, selected($days, $v, false), esc_html($l));
@@ -338,6 +361,8 @@ final class TBX_Activity
             }
             echo '</tbody></table>';
         }
+
+        TBX_Activity_Insights::render($since, $days, $path_filter);
 
         echo '<p class="tbx-muted">Resumen propio de WordPress, agregado por día y sin datos personales. Para análisis más profundo, los mismos eventos llegan a Google Analytics 4 vía GTM. Se conservan ' . (int) self::RETENTION_DAYS . ' días.</p>';
     }
