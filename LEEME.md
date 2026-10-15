@@ -177,3 +177,15 @@ La captura nativa opcional de **Contactos** ahora incluye eventos individuales d
 La implementación del plugin original incluía un **botón flotante configurable**, normalización de enlaces WhatsApp y tracking de algunos formularios HTML propios. Estos elementos no están completamente portados. Para desactivar definitivamente TIBOX Leads, documentar en staging qué botones y formularios tiene Prodata, probar que no cambian sus enlaces y validar todas las referencias en WhatsApp, antes de instalar una versión nueva en producción.
 
 Las pruebas automatizadas verifican generación de referencias, registro de teléfono/correo, atribución simple, consentimiento y bloqueo de doble clic. **No reemplazan pruebas de integración en navegador real ni de WordPress**.
+
+
+## Botón flotante WhatsApp — 1.7.0 beta
+
+En **TIBOX Admin > Contactos**, se agregó la configuración opcional para recrear el botón WhatsApp del plugin independiente, con campos **Activar**, número (8–15 dígitos incluyendo país), texto de botón, mensaje y posición izquierda/derecha.
+
+- El botón está desactivado por defecto y **solo aparece si la captura nativa de Contactos está activa y TIBOX Leads no está activo**. Evita superponer dos botones.
+- El botón usa estilos CSS propios responsivos y compatibles con foco de teclado, reducida animación y móviles.
+- Permite las variables {pagina} y {sitio} en el mensaje, sin ejecutar HTML. Utiliza el registro nativo de clics del módulo Contactos para agregar la referencia en enlaces wa.me con número válido.
+- No añade seguimiento de usuario, cookie ni eventos de conversión GTM.
+- Probar en staging que la posición no tape otros widgets, banners de cookies o contenido móvil y que la referencia aparezca efectivamente en el mensaje abierto.
+- Antes de retirar el plugin antiguo también debe confirmarse si Prodata utiliza formularios HTML hechos a medida u otros widgets WhatsApp distintos del flotante. La equivalencia todavía requiere QA funcional.
