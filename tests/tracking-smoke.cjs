@@ -34,7 +34,7 @@ const sandbox = {
 vm.runInNewContext(src, sandbox);
 assert.equal(window.__tbxTracking, true);
 assert.equal(window.dataLayer.length, 0, 'page_view own endpoint only');
-for (const fn of listeners.visibilitychange) fn();
+for (const fn of listeners.window_pagehide) fn();
 assert.equal(sent.length, 1);
 assert.equal(sent[0].body.events[0].e, 'page_view');
 assert.equal(sent[0].body.campaign.source, 'google');
@@ -55,7 +55,7 @@ let anchorRef = anchor('https://prodata.cl/brochure.pdf', 'Brochure');
 for (const fn of listeners.click || []) fn({target: anchorRef});
 anchorRef = anchor('https://externo.cl/', 'Enlace externo');
 for (const fn of listeners.click || []) fn({target: anchorRef});
-for (const fn of listeners.visibilitychange) fn();
+for (const fn of listeners.window_pagehide) fn();
 const evs = sent[1].body.events.map(x => x.e);
 assert.ok(evs.includes('download_click'));
 assert.ok(evs.includes('outbound_click'));
