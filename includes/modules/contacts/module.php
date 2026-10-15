@@ -248,6 +248,161 @@ final class TBX_Contacts
         exit;
     }
 
+    /**
+     * Una eliminación en TIBOX Admin no toca el plugin antiguo.
+     * La marca no almacena datos personales y detiene la reimportación.
+     */
+    public static function is_suppressed(string $source, int $id): bool
+    {
+        if ($id <= 0 || !self::exists(self::suppressed_table())) {
+            return false;
+        }
+        global $wpdb;
+        $sql = 'SELECT legacy_id FROM ' . self::suppressed_table() .
+            ' WHERE source_plugin = %s AND legacy_id = %d LIMIT 1';
+        return (bool) $wpdb->get_var($wpdb->prepare($sql, $source, $id));
+    }
+
+    /**
+     * Elimina físicamente SOLO la fila del panel TIBOX Admin.
+     * Nunca toca la tabla tbx_leads ni dispara envíos/mediciones.
+     */
+    public static function delete_contact(int $id): string
+    {
+        if ($id <= 0 || !self::exists(self::table()) || !self::exists(self::suppressed_table())) {
+            return 'error';
+        }
+        global $wpdb;
+        $row = $wpdb->get_row(
+            $wpdb->prepare('SELECT id,source_plugin,legacy_id FROM ' . self::table() . ' WHERE id=%d', $id),
+            ARRAY_A
+        );
+        if (!is_array($row)) {
+            return 'not_found';
+        }
+
+        $source = (string) $row['source_plugin'];
+        $legacy_id = (int) $row['legacy_id'];
+        if ($source === self::LEGACY_SOURCE && $legacy_id > 0) {
+            // Si el índice de borrados falla, no eliminamos la copia: evita reimportación accidental.
+            $marker = $wpdb->query($wpdb->prepare(
+                'INSERT INTO ' . self::suppressed_table() .
+                ' (source_plugin, legacy_id, deleted_at) VALUES (%s,%d,%s) ' .
+                'ON DUPLICATE KEY UPDATE deleted_at = VALUES(deleted_at)',
+                $source, $legacy_id, current_time('mysql', true)
+            ));
+            if ($marker === false) {
+                return 'error';
+            }
+        }
+        $removed = $wpdb->delete(self::table(), ['id' => $id], ['%d']);
+        return $removed === 1 ? 'deleted' : 'error';
+    }
+
+    public static function delete_action(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die('Sin permisos para borrar contactos.', '', ['response' => 403]);
+        }
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            wp_die('Método no permitido.', '', ['response' => 405]);
+        }
+        $id = isset($_POST['contact_id']) ? absint(wp_unslash($_POST['contact_id'])) : 0;
+        check_admin_referer('tbx_contacts_delete_' . $id);
+        self::install();
+        $status = self::delete_contact($id);
+        // Preserva filtros y paginación, sin aceptar claves ajenas.
+        $args = ['deleted' => $status];
+        foreach (['tipo','dispositivo','mes','s'] as $key) {
+            if (isset($_POST[$key]) && is_string($_POST[$key])) {
+                $args[$key] = sanitize_text_field(wp_unslash($_POST[$key]));
+            }
+        }
+        if (isset($_POST['paged'])) {
+            $args['paged'] = max(1, absint($_POST['paged']));
+        }
+        wp_safe_redirect(add_query_arg($args, TBX_Admin::tab_url('contactos')));
+        exit;
+    }
+
+    /** Prevención de fórmulas ejecutables al abrir CSV en Excel/Calc. */
+    public static function csv_safe($value): string
+    {
+        if (!is_scalar($value)) {
+            return '';
+        }
+        $v = (string) $value;
+        return preg_match('/^[\\s\\x00-\\x1F]*[=+\\-@]/u', $v) ? "'" . $v : $v;
+    }
+
+    public static function export_action(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die('Sin permisos para exportar contactos.', '', ['response' => 403]);
+        }
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
+            wp_die('Método no permitido.', '', ['response' => 405]);
+        }
+        check_admin_referer('tbx_contacts_export');
+        self::install();
+        if (!self::exists(self::table())) {
+            wp_die('Tabla de contactos no disponible.', '', ['response' => 500]);
+        }
+
+        global $wpdb;
+        [$where, $params] = self::filters();
+        nocache_headers();
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="tibox-contactos-' . gmdate('Y-m-d') . '.csv"');
+        header('X-Content-Type-Options: nosniff');
+        $handle = fopen('php://output', 'w');
+        if ($handle === false) {
+            wp_die('No se pudo abrir el archivo CSV.');
+        }
+        fwrite($handle, "\\xEF\\xBB\\xBF");
+        $columns = [
+            'Fecha y hora', 'Canal', 'Tecnología', 'Contacto', 'Correo', 'Teléfono',
+            'Referencia WhatsApp', 'Destino', 'Botón', 'Ubicación',
+            'Página', 'Título de página', 'ID formulario', 'Formulario',
+            'Origen campaña', 'Medio', 'Campaña', 'Término', 'Contenido',
+            'ID clic anuncio', 'Referente', 'Página de entrada', 'Estado correo',
+            'Dispositivo', 'Navegador', 'Sistema operativo', 'Mensaje', 'Respuestas JSON',
+            'Fuente registro',
+        ];
+        fputcsv($handle, $columns, ';', '"', '');
+        $batch_size = 500;
+        $offset = 0;
+        // Descarga por lotes para no cargar todo el histórico en memoria.
+        do {
+            $sql = 'SELECT * FROM ' . self::table() . $where .
+                ' ORDER BY created_at DESC,id DESC LIMIT %d OFFSET %d';
+            $batch = $wpdb->get_results(
+                $wpdb->prepare($sql, ...array_merge($params, [$batch_size, $offset])),
+                ARRAY_A
+            );
+            foreach ((array) $batch as $r) {
+                $date = !empty($r['created_at'])
+                    ? get_date_from_gmt($r['created_at'], 'Y-m-d H:i:s')
+                    : '';
+                $values = [
+                    $date, $r['type'], $r['origin'], $r['name'], $r['email'],
+                    $r['phone'], $r['ref_code'], $r['destination'], $r['button_text'],
+                    $r['location'], $r['page_url'], $r['page_title'], $r['form_id'],
+                    $r['form_name'], $r['source'], $r['medium'], $r['campaign'],
+                    $r['term'], $r['content'], $r['click_id'], $r['referrer'],
+                    $r['landing_page'], $r['mail_status'], $r['device'],
+                    $r['browser'], $r['os'], $r['message'], $r['fields'],
+                    $r['source_plugin'],
+                ];
+                fputcsv($handle, array_map([self::class, 'csv_safe'], $values), ';', '"', '');
+            }
+            $offset += count((array) $batch);
+        } while (count((array) $batch) === $batch_size);
+
+        fclose($handle);
+        exit;
+    }
+
     private static function filters(): array
     {
         global $wpdb;
