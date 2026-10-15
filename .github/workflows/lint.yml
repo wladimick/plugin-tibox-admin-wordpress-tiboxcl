@@ -16,4 +16,13 @@ jobs:
       - name: Verify device parser
         run: php tests/context-smoke.php
       - name: Verify tracking behaviors and GTM isolation
-        run: node tests/tracking-smoke.cjs
+        run: |
+          node tests/tracking-smoke.cjs > tracking-test.log 2>&1 || {
+            cat tracking-test.log
+            echo '### Tracking test failure' >> "$GITHUB_STEP_SUMMARY"
+            echo '\x60\x60\x60text' >> "$GITHUB_STEP_SUMMARY"
+            cat tracking-test.log >> "$GITHUB_STEP_SUMMARY"
+            echo '\x60\x60\x60' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
+          cat tracking-test.log
