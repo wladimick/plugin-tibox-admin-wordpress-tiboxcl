@@ -283,6 +283,9 @@ final class TBX_Activity
         }
         echo '</div>';
 
+        // Métricas nuevas segmentadas, visibles antes de las tablas históricas.
+        TBX_Activity_Insights::render($since, $days, $path_filter);
+
         /* Embudo de landings */
         $funnel = $wpdb->get_results($wpdb->prepare(
             "SELECT page_path,
@@ -361,8 +364,6 @@ final class TBX_Activity
             }
             echo '</tbody></table>';
         }
-
-        TBX_Activity_Insights::render($since, $days, $path_filter);
 
         echo '<p class="tbx-muted">Resumen propio de WordPress, agregado por día y sin datos personales. Para análisis más profundo, los mismos eventos llegan a Google Analytics 4 vía GTM. Se conservan ' . (int) self::RETENTION_DAYS . ' días.</p>';
     }
