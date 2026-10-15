@@ -30,3 +30,5 @@ jobs:
         run: php tests/vitals-rating-smoke.php
       - name: Verify Web Vitals frontend privacy and batching
         run: node tests/vitals-smoke.cjs
+      - name: Verify native Contact form sanitation and legacy mutual exclusion
+        run: php tests/native-contacts-smoke.php

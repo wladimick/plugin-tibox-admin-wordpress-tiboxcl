@@ -136,3 +136,26 @@ Esta rama depende del módulo Contactos en PR #3 y del rediseño de leads en PR 
 - Como INP se registra solamente cuando el navegador tiene interacciones válidas, puede tener menos muestras que LCP/CLS.
 - Controles: permiso manage_options y nonce para cambios; rechazo de fuentes cross-origin, navegadores automáticos y abuso de frecuencia en la API.
 - Estado: pruebas automatizadas de parser, umbrales, consentimiento y envío por beacon. Aún debe validarse end-to-end con WordPress, CMP y Tag Assistant antes de activarlo en Prodata.
+
+
+## Contactos: captura nativa de WPForms, Elementor y Contact Form 7 — 1.5.0 beta
+
+El módulo opcional **Contactos** incluye ahora la sección **Captura directa de formularios**. Su uso es gradual para Prodata:
+
+1. Respaldar el WordPress y la tabla original {prefix}tbx_leads.
+2. **Mantener TIBOX Leads activo** y utilizar **Importar datos anteriores** para copiar el histórico a {prefix}tbx_admin_contacts; verificar por cantidad, fecha y referencias de WhatsApp.
+3. Mientras el plugin TIBOX Leads esté activo, **TIBOX Admin no captura formularios por su cuenta**, incluso si quedó marcada accidentalmente la opción. Así no duplica el historial ni notificaciones.
+4. En staging, comprobar que el historial copiado y las entradas nuevas están completas; entonces **desactivar (no desinstalar ni borrar)** el plugin antiguo, conservando su tabla como respaldo.
+5. En **TIBOX Admin > Contactos > Captura directa de formularios** habilitar **Registrar formularios directamente desde TIBOX Admin**.
+6. Enviar pruebas reales desde **WPForms**, **Elementor Forms** y **Contact Form 7**, comprobar que aparezcan una sola vez y que se identifiquen navegador y dispositivo, sin datos sensibles.
+7. Solo cuando todo lo anterior funcione validar cambios en producción, con rollback por reactivación del plugin original **y desactivación de captura nativa**.
+
+### Comportamiento y límites
+
+- Solo se almacena el formulario después del hook servidor confirmado de WPForms o Elementor o del evento **wpcf7_mail_sent** de CF7. Un simple clic sobre "Enviar" no basta.
+- La implementación no registra contraseñas, nonces, captchas, tarjetas, archivos, IDs de visitante ni User-Agent completo en Contactos. Guarda respuestas de campos de texto no sensibles y los datos de contacto que se hayan recogido voluntariamente.
+- Los envíos nativos se distinguen por source_plugin = tibox-admin-native y origin = wpforms/elementor/cf7. Un contador interno atómico les asigna IDs separados de los registros legados, para respetar el índice único y evitar conflictos.
+- No se disparan nuevos correos ni etiquetas de conversión de GTM por la inserción en Contactos. Si se requiere conservar notificaciones del plugin antiguo, validar que los formularios sigan enviándolas por sus propias configuraciones.
+- El HTML genérico y clics individuales de WhatsApp/teléfono/correo continúan dependiendo del plugin original. Aún se requiere portar estos eventos antes de declarar equivalencia funcional plena. El módulo Actividad cuenta sus clics de forma agregada, no preserva las referencias individuales que asignaba TIBOX Leads.
+- La atribución UTM de formularios propios se extrae de campos publicados UTM o de la URL de origen cuando los contiene; para igualdad total con la persistencia de campaña del plugin anterior falta implementar un puente de atribución explícito.
+- Antes de usar en producción se requiere prueba de integración en WordPress con cada plugin de formularios, revisión de consentimiento y comparación GTM/GA4. No implica ninguna modificación de la base de datos original al importar.

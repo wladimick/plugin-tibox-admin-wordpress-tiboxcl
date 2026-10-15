@@ -2,8 +2,8 @@
 /**
  * Contactos: historial importado de Tibox Leads 1.0.0.
  *
- * No reemplaza todavía los hooks nativos de formularios: durante la convivencia,
- * replica nuevos registros desde el hook tbx_leads_inserted sin tocar el original.
+ * Durante la convivencia, replica nuevos registros desde tibox_leads_inserted.
+ * Al retirar Tibox Leads, puede activar captura propia WPForms/Elementor/CF7.
  */
 if (!defined('ABSPATH')) {
     exit;
@@ -324,6 +324,8 @@ final class TBX_Contacts
         }
         echo '</div>';
 
+        TBX_Native_Contacts::render_settings();
+
         [$where, $params, $type, $search, $device] = self::filters();
         $per_page = 50;
         $page = isset($_GET['paged']) ? max(1, absint(wp_unslash($_GET['paged']))) : 1;
@@ -429,5 +431,7 @@ final class TBX_Contacts
         }
     }
 }
+
+require_once __DIR__ . '/class-tbx-native-capture.php';
 
 TBX_Contacts::init();
