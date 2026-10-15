@@ -537,8 +537,30 @@ final class TBX_Contacts
             echo '<div class="notice notice-error"><p>No se pudo preparar la tabla de contactos.</p></div>';
             return;
         }
-        echo '<p class="tbx-lead">Registro unificado de contactos. Esta primera versión admite la importación y sincronización de TIBOX Leads 1.0.0 en el mismo WordPress.</p>';
+        echo '<p class="tbx-lead">Bandeja única de consultas: WPForms, Elementor, Contact Form 7, landings y clics de contacto. Abre las respuestas y cambia el estado sin salir de esta página.</p>';
 
+        global $wpdb;
+        $stats = $wpdb->get_results('SELECT type, COUNT(*) n FROM ' . self::table() . ' GROUP BY type', ARRAY_A);
+        $count = ['form' => 0, 'whatsapp' => 0, 'phone' => 0, 'email' => 0];
+        foreach ((array) $stats as $st) {
+            if (isset($count[$st['type']])) {
+                $count[$st['type']] = (int) $st['n'];
+            }
+        }
+        echo '<div class="tbx-cards tbx-inbox-cards">';
+        foreach ([
+            ['label' => 'Formularios recibidos', 'total' => $count['form']],
+            ['label' => 'Clics WhatsApp', 'total' => $count['whatsapp']],
+            ['label' => 'Teléfono y correo', 'total' => $count['phone'] + $count['email']],
+            ['label' => 'Total registros', 'total' => array_sum($count)],
+        ] as $card) {
+            echo '<div class="tbx-card"><span class="tbx-card__num">' .
+                esc_html(number_format_i18n($card['total'])) .
+                '</span><span class="tbx-card__lbl">' . esc_html($card['label']) . '</span></div>';
+        }
+        echo '</div>';
+
+        echo '<details class="tbx-inbox-settings"><summary>Importaciones y configuración de capturas</summary>';
         $legacy_found = self::exists(self::legacy_table());
         echo '<div class="tbx-import-card"><h2>Importar datos anteriores · TIBOX Leads</h2>';
         if (!$legacy_found) {
@@ -600,8 +622,10 @@ final class TBX_Contacts
         }
         echo '</div>';
 
+        TBX_Contact_Sources::render();
         TBX_Native_Contacts::render_settings();
         TBX_Native_Contacts::render_wa_settings();
+        echo '</details>';
 
         [$where, $params, $type, $search, $device, $month, $form, $status] = self::filters();
         $per_page = 50;
@@ -614,7 +638,7 @@ final class TBX_Contacts
         );
         $rows = $wpdb->get_results($query, ARRAY_A);
 
-        echo '<h2 class="tbx-h2">Historial de contactos</h2>';
+        echo '<h2 class="tbx-h2">Bandeja de contactos</h2>';
         echo '<form method="get" class="tbx-filters">';
         echo '<input type="hidden" name="page" value="tibox-admin-contactos">';
         $months = $wpdb->get_col('SELECT DATE_FORMAT(created_at, "%Y-%m") AS ym FROM ' .
@@ -634,6 +658,36 @@ final class TBX_Contacts
             echo '<option value="' . esc_attr($k) . '"' . selected($type, $k, false) . '>' . esc_html($label) . '</option>';
         }
         echo '</select></label>';
+        $forms = $wpdb->get_results(
+            'SELECT origin,form_id,MAX(form_name) form_name,COUNT(*) n FROM ' .
+            self::table() .
+            ' WHERE type = %s GROUP BY origin,form_id ORDER BY n DESC LIMIT 150' === ''
+            ? '' : $wpdb->prepare(
+                'SELECT origin,form_id,MAX(form_name) form_name,COUNT(*) n FROM ' .
+                self::table() . ' WHERE type = %s GROUP BY origin,form_id ORDER BY n DESC LIMIT 150',
+                'form'
+            ),
+            ARRAY_A
+        );
+        echo '<label>Formulario <select name="formulario"><option value="">Todos los formularios</option>';
+        foreach ((array) $forms as $entry) {
+            $origin = (string) ($entry['origin'] ?? '');
+            $id = (string) ($entry['form_id'] ?? '');
+            if ($origin === '' || $id === '') {
+                continue;
+            }
+            $value = $origin . '|' . $id;
+            $title = (string) ($entry['form_name'] ?: strtoupper($origin) . ' #' . $id);
+            echo '<option value="' . esc_attr($value) . '"' . selected($form, $value, false) .
+                '>' . esc_html($title . ' · ' . $origin) . '</option>';
+        }
+        echo '</select></label>';
+        echo '<label>Estado <select name="estado"><option value="">Todos los estados</option>';
+        foreach (self::status_values() as $k => $v) {
+            echo '<option value="' . esc_attr($k) . '"' . selected($status, $k, false) .
+                '>' . esc_html($v) . '</option>';
+        }
+        echo '</select></label>';
         echo '<label>Dispositivo <select name="dispositivo">';
         foreach (['' => 'Todos', 'mobile' => 'Móvil', 'desktop' => 'Escritorio', 'tablet' => 'Tablet', 'unknown' => 'Desconocido'] as $v => $name) {
             echo '<option value="' . esc_attr($v) . '"' . selected($device, $v, false) . '>' . esc_html($name) . '</option>';
@@ -646,12 +700,26 @@ final class TBX_Contacts
         $export_url = wp_nonce_url(
             add_query_arg([
                 'action' => 'tbx_contacts_export', 'tipo' => $type, 'mes' => $month,
-                'dispositivo' => $device, 's' => $search,
+                'dispositivo' => $device, 's' => $search, 'formulario' => $form, 'estado' => $status,
             ], admin_url('admin-post.php')),
             'tbx_contacts_export'
         );
         echo '<p><a class="button button-primary" href="' . esc_url($export_url) .
             '">Exportar CSV</a> <span class="tbx-muted">Incluye los registros del filtro seleccionado, con respuestas, referencias WhatsApp y origen de campañas.</span></p>';
+        if (isset($_GET['status_saved'])) {
+            $ok = sanitize_key(wp_unslash($_GET['status_saved'])) === '1';
+            echo '<div class="notice notice-' . ($ok ? 'success' : 'error') .
+                ' inline"><p>' . ($ok ? 'Estado del contacto actualizado.' :
+                    'No se pudo guardar el estado de este contacto.') . '</p></div>';
+        }
+        if (isset($_GET['source_imported'])) {
+            $done = absint(wp_unslash($_GET['source_imported']));
+            $failed = isset($_GET['source_errors']) ? absint(wp_unslash($_GET['source_errors'])) : 0;
+            echo '<div class="notice notice-' . ($failed ? 'warning' : 'success') .
+                ' inline"><p>Importados o reconocidos como duplicados: ' .
+                esc_html((string) $done) . '. Sin procesar: ' . esc_html((string) $failed) .
+                '.</p></div>';
+        }
         $deleted = isset($_GET['deleted']) && is_string($_GET['deleted'])
             ? sanitize_key(wp_unslash($_GET['deleted'])) : '';
         if ($deleted !== '') {
@@ -673,7 +741,7 @@ final class TBX_Contacts
             return;
         }
         echo '<div class="tbx-leads-scroll"><table class="widefat striped tbx-table tbx-leads-table"><thead><tr>';
-        echo '<th>Fecha</th><th>Canal</th><th>Contacto</th><th>Dónde ocurrió</th><th>Dispositivo</th><th>Origen</th><th>Detalles</th><th>Acciones</th>';
+        echo '<th>Fecha</th><th>Canal</th><th>Contacto</th><th>Formulario o página</th><th>Dispositivo</th><th>Origen</th><th>Respuestas</th><th>Seguimiento</th><th>Acciones</th>';
         echo '</tr></thead><tbody>';
         foreach ($rows as $r) {
             $kind = $types[$r['type']] ?? $r['type'];
@@ -700,13 +768,22 @@ final class TBX_Contacts
                 echo '<a href="' . esc_url($r['page_url']) .
                     '" target="_blank" rel="noopener noreferrer">' . esc_html($page_path ?: $r['page_url']) . '</a>';
             }
-            echo '<small>' . esc_html($r['form_name'] ?: $r['location']) . '</small></td>';
+            echo '<small>' . esc_html($r['form_name'] ?: $r['location']) .
+                '</small><small>' . esc_html($r['type'] === 'form' ? ($r['origin'] ?: 'formulario') : '') .
+                '</small></td>';
             $devices = ['mobile' => 'Móvil', 'desktop' => 'Escritorio', 'tablet' => 'Tablet', 'unknown' => 'Desconocido'];
             echo '<td>' . esc_html($devices[$r['device']] ?? 'Desconocido') . '<small style="display:block">' .
                 esc_html($r['browser'] . ' · ' . $r['os']) . '</small></td>';
             echo '<td>' . esc_html($r['source'] ?: '(directo)') .
                 '<small style="display:block">' . esc_html($r['medium'] ?: '(ninguno)') . '</small></td>';
-            echo '<td class="tbx-leads-details"><details><summary>Ver detalles</summary><div class="tbx-leads-details-body">';
+            echo '<td class="tbx-leads-details"><details class="tbx-contact-responses"><summary>' .
+                ($r['type'] === 'form' ? 'Ver respuestas' : 'Ver detalles') .
+                '</summary><div class="tbx-leads-details-body">';
+            echo '<h4>Ficha de consulta</h4>';
+            echo '<div><strong>Fecha:</strong> ' .
+                esc_html(get_date_from_gmt($r['created_at'], 'd-m-Y H:i')) . '</div>';
+            echo '<div><strong>Canal:</strong> ' . esc_html($kind) .
+                ' · ' . esc_html((string) $r['origin']) . '</div>';
             foreach (['form_id' => 'Formulario', 'origin' => 'Tecnología', 'ref_code' => 'Referencia', 'button_text' => 'Botón',
                 'destination' => 'Destino', 'message' => 'Mensaje', 'campaign' => 'Campaña',
                 'term' => 'Término', 'content' => 'Contenido', 'click_id' => 'ID de anuncio',
@@ -726,12 +803,30 @@ final class TBX_Contacts
                 }
             }
             echo '</div></details></td>';
+            $value = isset(self::status_values()[$r['status']]) ? $r['status'] : 'nuevo';
+            echo '<td class="tbx-contact-status"><form method="post" action="' .
+                esc_url(admin_url('admin-post.php')) . '">';
+            echo '<input type="hidden" name="action" value="tbx_contacts_status">';
+            echo '<input type="hidden" name="contact_id" value="' . esc_attr((string) $r['id']) . '">';
+            foreach (['tipo' => $type, 'dispositivo' => $device, 'mes' => $month, 's' => $search,
+                      'formulario' => $form, 'estado' => $status, 'paged' => $page] as $key => $entry) {
+                echo '<input type="hidden" name="' . esc_attr($key) . '" value="' .
+                    esc_attr((string) $entry) . '">';
+            }
+            wp_nonce_field('tbx_contacts_status_' . (int) $r['id']);
+            echo '<select name="status" aria-label="Estado del contacto">';
+            foreach (self::status_values() as $status_key => $status_label) {
+                echo '<option value="' . esc_attr($status_key) . '"' .
+                    selected($value, $status_key, false) . '>' . esc_html($status_label) . '</option>';
+            }
+            echo '</select><button class="button button-small" type="submit">Guardar</button></form></td>';
             echo '<td class="tbx-leads-actions"><form method="post" action="' .
                 esc_url(admin_url('admin-post.php')) .
                 '" onsubmit="return confirm(&quot;¿Borrar este registro de TIBOX Admin? El registro del plugin antiguo no se eliminará.&quot;);">';
             echo '<input type="hidden" name="action" value="tbx_contacts_delete">';
             echo '<input type="hidden" name="contact_id" value="' . esc_attr((string) $r['id']) . '">';
-            foreach (['tipo' => $type, 'dispositivo' => $device, 'mes' => $month, 's' => $search, 'paged' => $page] as $key => $value) {
+            foreach (['tipo' => $type, 'dispositivo' => $device, 'mes' => $month, 's' => $search,
+                      'formulario' => $form, 'estado' => $status, 'paged' => $page] as $key => $value) {
                 echo '<input type="hidden" name="' . esc_attr($key) . '" value="' . esc_attr((string) $value) . '">';
             }
             wp_nonce_field('tbx_contacts_delete_' . (int) $r['id']);
@@ -741,7 +836,8 @@ final class TBX_Contacts
         echo '</tbody></table></div>';
         $pages = (int) ceil($total / $per_page);
         if ($pages > 1) {
-            $args = ['page' => 'tibox-admin-contactos', 'tipo' => $type, 's' => $search, 'mes' => $month, 'dispositivo' => $device];
+            $args = ['page' => 'tibox-admin-contactos', 'tipo' => $type, 's' => $search,
+                     'mes' => $month, 'dispositivo' => $device, 'formulario' => $form, 'estado' => $status];
             $links = paginate_links([
                 'base' => add_query_arg('paged', '%#%', add_query_arg($args, admin_url('admin.php'))),
                 'current' => $page,
@@ -754,5 +850,6 @@ final class TBX_Contacts
 }
 
 require_once __DIR__ . '/class-tbx-native-capture.php';
+require_once __DIR__ . '/class-tbx-contact-sources.php';
 
 TBX_Contacts::init();
