@@ -13,3 +13,7 @@ jobs:
         run: find . -type f -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: JavaScript syntax
         run: find assets -type f -name '*.js' -print0 | xargs -0 -n1 node --check
+      - name: Verify device parser
+        run: php tests/context-smoke.php
+      - name: Verify tracking behaviors and GTM isolation
+        run: node tests/tracking-smoke.cjs
