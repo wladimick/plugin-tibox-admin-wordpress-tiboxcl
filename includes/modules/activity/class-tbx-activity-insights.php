@@ -68,10 +68,14 @@ final class TBX_Activity_Insights
         $wpdb->query($wpdb->prepare('DELETE FROM ' . self::table() . ' WHERE day < %s', $day));
     }
 
-    private static function safe_campaign(string $v, int $max): string
+    private static function safe_campaign($v, int $max): string
     {
+        // Rechaza valores estructurados y contenido que no sean UTMs cortas.
+        if (!is_scalar($v)) {
+            return '';
+        }
         // Solo parámetros UTM, sin URLs completas, emails ni identificadores.
-        $v = sanitize_text_field($v);
+        $v = sanitize_text_field((string) $v);
         if (preg_match('/@|%40|https?:|[\r\n]/i', $v)) {
             return '';
         }
@@ -84,9 +88,9 @@ final class TBX_Activity_Insights
             return;
         }
         $c = TBX_Analytics_Context::classify($ua);
-        $source = self::safe_campaign((string) ($campaign['source'] ?? ''), 80);
-        $medium = self::safe_campaign((string) ($campaign['medium'] ?? ''), 50);
-        $name = self::safe_campaign((string) ($campaign['campaign'] ?? ''), 100);
+        $source = self::safe_campaign($campaign['source'] ?? '', 80);
+        $medium = self::safe_campaign($campaign['medium'] ?? '', 50);
+        $name = self::safe_campaign($campaign['campaign'] ?? '', 100);
         $values = [$event, $path, $location, $label, $c['device'], $c['browser'], $c['os'], $source, $medium, $name];
         $hash = hash('sha256', wp_json_encode($values));
 
