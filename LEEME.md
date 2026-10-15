@@ -72,3 +72,20 @@ Al desactivar el plugin se quitan sus menús y tareas programadas, pero **no** s
 6. Retirar Tibox Leads solo después de portar su captación, conservar los registros y verificar el flujo completo en staging.
 
 > El botón «Borrar» de esta versión afecta a **Leads de landings TIBOX**, no a la tabla de contactos de Prodata.
+
+
+## Módulo Contactos 1.2.0 — Importar historial anterior (beta)
+
+La pestaña **Contactos** se activa opcionalmente en **TIBOX Admin → Módulos**. No es el mismo módulo que **Leads** de landings y puede convivir con el plugin independiente **Tibox Leads 1.0.0**.
+
+### Flujo seguro en Prodata
+
+1. Hacer **respaldo de base de datos y archivos** del WordPress de Prodata antes de instalar la actualización.
+2. Mantener **Tibox Leads** activado, con su tabla {prefix}tbx_leads, y activar el módulo **Contactos** de TIBOX Admin.
+3. En **TIBOX Admin → Contactos**, el panel detecta automáticamente la tabla y muestra el **total histórico**, **copiados**, **pendientes** y la **distribución por tipo**. Si no existe tabla, no se muestra ninguna acción de importar.
+4. Tras verificar los números, pulsar **«Importar hasta 100 registros»**. La confirmación y el nonce evitan envíos accidentales. Para históricos más grandes, repetir el botón por lotes hasta dejar pendientes = 0.
+5. Repetir la importación es **idempotente** por el índice único (source_plugin, legacy_id). Se copian datos, **nunca se borra ni se sobrescribe** el historial antiguo. Las fechas se almacenan como GMT y se muestran en el horario local del sitio; se conservan las referencias de WhatsApp, respuestas de formularios, UTM, campañas y el origen. **No se copian** IP, hash de IP, ID de visitante ni user agent.
+6. Mientras **ambos plugins** estén activos, los registros nuevos de Tibox Leads se copian a Contactos automáticamente mediante el hook tbx_leads_inserted, sin duplicar el registro original. El módulo Contactos no envía correos ni eventos extra a GTM.
+7. Verificar en staging que los conteos coincidan y que los formularios Elementor, WPForms y Contact Form 7, y los clics WhatsApp, se sigan registrando. Tras pasar las pruebas, repetir en producción.
+
+**Límites de esta entrega:** el módulo Contactos 1.2.0 todavía **no sustituye** al capturador original. Su valor inicial es importar, visualizar y sincronizar el historial en el *mismo WordPress*. La captura nativa de formularios (sin depender de Tibox Leads) queda pendiente en la fase posterior. Tampoco se trasladan registros de un WordPress a otro ni se agregan los clics históricos a las métricas diarias del módulo Actividad. No desinstalar Tibox Leads hasta terminar esa fase.

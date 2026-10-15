@@ -46,6 +46,13 @@ final class TBX_Modules
                     'TIBOX — WebOps Marketing Lead Bridge',
                 ],
             ],
+            'contacts' => [
+                'name' => 'Contactos',
+                'desc' => 'Registro unificado de contactos, con importación segura y sincronización del historial de TIBOX Leads (Prodata) sin borrar datos anteriores.',
+                'file' => 'modules/contacts/module.php',
+                'conflict' => [],
+                'snippets' => [],
+            ],
             'activity' => [
                 'name' => 'Actividad del sitio',
                 'desc' => 'Mide clics en teléfono, correo, WhatsApp, portal cliente, botones, formularios, FAQ, secciones y scroll. Envía a GTM y guarda un resumen propio en WordPress.',
