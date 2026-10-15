@@ -90,11 +90,10 @@
     sentCount += batch.length;
     var body = JSON.stringify({ path: path, campaign: campaign, events: batch });
     try {
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(TRACK_URL, new Blob([body], { type: 'application/json' }));
-      } else {
-        fetch(TRACK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body, keepalive: true });
+      if (navigator.sendBeacon && navigator.sendBeacon(TRACK_URL, new Blob([body], { type: 'application/json' }))) {
+        return;
       }
+      fetch(TRACK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body, keepalive: true });
     } catch (_) {}
   }
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flush(); });
