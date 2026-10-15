@@ -40,3 +40,5 @@ jobs:
         run: node tests/native-wa-button-smoke.cjs
       - name: Verify Contacts delete protection and CSV output safety
         run: php tests/contacts-delete-csv-smoke.php
+      - name: Verify historical WPForms and Landing contacts import and deduplication
+        run: php tests/unified-inbox-sources-smoke.php

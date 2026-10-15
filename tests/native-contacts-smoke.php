@@ -22,7 +22,8 @@ $raw = [
     ['n' => 'opciones', 'l' => 'Opciones', 'v' => ['uno', 'dos'], 't' => 'checkbox'],
 ];
 $fields = TBX_Native_Contacts::normalize_fields($raw);
-if (count($fields) !== 4) { fwrite(STDERR, 'Expected exactly 4 safe fields'.PHP_EOL); exit(1); }
+if (count($fields) !== 5) { fwrite(STDERR, 'Expected exactly 5 safe fields including multiselect'.PHP_EOL); exit(1); }
+if ($fields[4]['v'] !== 'uno, dos') { fwrite(STDERR, 'Multiselect response not preserved'.PHP_EOL); exit(1); }
 $c = TBX_Native_Contacts::extract_contact($fields);
 $expected = ['name' => 'Ana Soto', 'email' => 'ana@example.cl', 'phone' => '+56998765432', 'message' => 'Necesito una cotización'];
 if ($c !== $expected) { fwrite(STDERR, 'Contact extraction mismatch: '.json_encode($c).PHP_EOL); exit(1); }

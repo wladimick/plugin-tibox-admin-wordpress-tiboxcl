@@ -202,3 +202,37 @@ La pestaña **Contactos** incorpora ahora **Borrar** por cada fila, y **Exportar
 - Se neutralizan valores peligrosos para evitar la ejecución de fórmulas de hojas de cálculo (CSV injection).
 - Exporta **solo los registros visibles según filtros**; si se desea una copia completa, seleccionar "Todos los meses", "Todos los canales" y "Todos los dispositivos", sin búsqueda.
 - La versión mantiene captura nativa y Web Vitals desactivadas por defecto; mantener TIBOX Leads activo en Prodata durante la transición. Recomendado instalar primero en staging y hacer respaldo completo.
+
+
+## Bandeja única Contactos — TIBOX Admin 1.9.0 beta
+
+Esta entrega transforma **TIBOX Admin > Contactos** en una bandeja prioritaria para gestionar formularios y clics del sitio desde una única pantalla.
+
+### Pantalla diaria
+- Resumen con formularios recibidos, WhatsApp, teléfono/correo y total.
+- Listado con **Ver respuestas**, sin abandonar Contactos. Muestra nombre, correo, teléfono, formulario específico, campos completos disponibles, mensaje, página, campañas y dispositivo.
+- Filtros por **mes**, **canal**, **formulario específico**, **estado**, **dispositivo** y **búsqueda**. Borrar individual y CSV respetan el filtro.
+- Cuatro estados por registro: **Nuevo**, **En gestión**, **Respondido** y **Cerrado**. Se actualizan desde la fila, con nonce por contacto y permisos administrativos.
+- Los controles de importación, captación y botón WhatsApp se ocultan bajo **Importaciones y configuración de capturas**, inicialmente plegado, para despejar el listado de trabajo.
+
+### Fuentes que confluyen en Contactos
+1. **TIBOX Leads (Prodata):** el historial importado y las altas del plugin anterior siguen sincronizándose mientras ambos plugins estén activos; no requiere activar captura nativa.
+2. **WPForms, Elementor Pro Forms y Contact Form 7:** envíos capturados con sus hooks de servidor cuando la captura nativa esté habilitada y el capturador anterior ya no esté activo.
+3. **Landings TIBOX Admin:** nuevo importador opcional desde {prefix}tibox_landing_leads, más registro automático mediante el hook tibox_landing_lead_created para las nuevas entradas.
+4. **WPForms Entries:** nuevo importador opcional, por lotes de 100, **solamente cuando WPForms conserva entradas en {prefix}wpforms_entries**. No exige activar captura nativa. WPForms Lite no siempre conserva un historial consultable; en ese caso no habrá tabla y el importador lo advertirá.
+5. Clics individuales WhatsApp/teléfono/email del capturador nativo, cuando se active en lugar del antiguo.
+
+**Precaución al importar WPForms:** el importador evita copiar dos veces una entrada por su ID original; además, si encuentra un envío previo del mismo email dentro de ±120 segundos en el capturador antiguo o el nativo, lo registra como ya cubierto y no lo duplica. La hora histórica de diferentes sistemas podría tener diferencias de zona horaria; confirmar el resultado en staging. No se importan entradas WPForms de tipo no final ni marcadas como spam o papelera. No se modifican las tablas origen.
+
+**Eliminación y privacidad:** cuando un registro importado de TIBOX Leads, WPForms o landings se borra en Contactos, permanece intacto en la tabla original y una marca técnica impide que la copia reaparezca. Si existe una solicitud de eliminación de datos personales en el sitio, hay que eliminar también el original en su respectivo capturador.
+
+**Respuestas múltiples:** casillas, multiselección y selección con varios valores se guardan de forma legible, excluyendo contraseñas, archivos, datos de pago, tokens y campos ocultos. No se almacenan nuevos perfiles individuales de navegación.
+
+### Validaciones que faltan
+- Prueba WordPress real en staging con WPForms, Elementor y CF7; comprobar respuestas, codificación CSV, estados y mensajes de éxito.
+- Comparar la entrada histórica de Hebert Bezemer de Prodata con WPForms Entries antes de importar; confirmar que no duplica la misma consulta.
+- Validar que todas las landings estén presentes y sus fechas sean correctas.
+- Verificar GTM/GA4, correo, velocidad y funcionamiento de WordPress en móvil.
+- Backup completo antes de actualizar. No desactivar el TIBOX Leads original en Prodata hasta completar las pruebas.
+
+La versión 1.9 no fusiona físicamente ni elimina tablas origen, y no envía correos nuevos ni conversiones adicionales. Las opciones de captura nativa y Web Vitals continúan desactivadas de forma predeterminada.

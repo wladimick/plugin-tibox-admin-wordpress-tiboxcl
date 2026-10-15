@@ -105,3 +105,34 @@ a.tbx-card:hover { border-color: var(--tbx-sky); transform: translateY(-2px); co
 .tbx-contact-delete:hover,.tbx-contact-delete:focus-visible { color: #861811 !important; text-decoration: underline; }
 .tbx-leads-actions { white-space: nowrap; text-align: right; }
 .tbx-leads-actions form { margin: 0; }
+
+/* Bandeja unificada Contactos v1.9 */
+.tbx-inbox-cards { margin: 14px 0 18px; }
+.tbx-inbox-settings { margin: 16px 0 24px; border: 1px solid var(--tbx-line, #dae1ea);
+  border-radius: 12px; background: #fff; padding: 0 16px; }
+.tbx-inbox-settings > summary { cursor: pointer; padding: 16px 0; color: var(--tbx-navy, #101b46);
+  font-weight: 650; outline-offset: 5px; }
+.tbx-inbox-settings[open] > summary { border-bottom: 1px solid #e8ebf0; margin-bottom: 15px; }
+.tbx-contact-source-tools { border: 1px solid #e4e8ef; border-radius: 8px;
+  padding: 12px 15px; margin: 12px 0; background: #f9fafc; }
+.tbx-contact-source-tools > summary { font-weight: 600; cursor: pointer; }
+.tbx-contact-source { display: flex; flex-wrap: wrap; align-items: center; gap: 9px;
+  border-bottom: 1px solid #e4e8ef; padding: 11px 0; font-size: 13px; }
+.tbx-contact-source form { display: inline-flex; align-items: center; margin: 0; }
+.tbx-contact-source form .button { margin: 0; }
+.tbx-contact-responses summary { color: #2346a9; font-weight: 600;
+  cursor: pointer; white-space: nowrap; padding: 5px 0; }
+.tbx-contact-responses[open] { min-width: 260px; max-width: min(520px, 72vw); }
+.tbx-contact-responses .tbx-leads-details-body { line-height: 1.6;
+  padding: 10px 12px; background: #f8faff; border-radius: 8px;
+  max-height: 380px; overflow-y: auto; overflow-wrap: anywhere; }
+.tbx-contact-responses h4 { font-size: 13px; margin: 0 0 8px; }
+.tbx-contact-status form { display: inline-flex; flex-direction: column; gap: 6px;
+  min-width: 115px; align-items: start; margin: 0; }
+.tbx-contact-status select { max-width: 165px; width: 100%; }
+.tbx-contact-status .button-small { min-height: 25px; }
+.tbx-inbox-settings .tbx-import-card { box-shadow: none; }
+@media (max-width: 800px) {
+  .tbx-inbox-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tbx-contact-status form { min-width: 112px; }
+}

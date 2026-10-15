@@ -110,10 +110,22 @@ final class TBX_Native_Contacts
             $name = self::scalar($item['n'] ?? '', 100);
             $label = self::scalar($item['l'] ?? '', 100);
             $type = sanitize_key(self::scalar($item['t'] ?? '', 30));
-            if ($name === '' || str_starts_with($name, '_') || self::is_sensitive($name . ' ' . $label, $type)) {
+            if ($name === '' || str_starts_with($name, '_') || $type === 'hidden' ||
+                self::is_sensitive($name . ' ' . $label, $type)) {
                 continue;
             }
             $raw = $item['v'] ?? '';
+            // Casillas múltiples/selecciones de Elementor, WPForms y CF7.
+            // No se incluyen estructuras anidadas, archivos ni objetos.
+            if (is_array($raw)) {
+                $values = [];
+                foreach (array_slice($raw, 0, 25) as $v) {
+                    if (is_scalar($v)) {
+                        $values[] = sanitize_text_field((string) $v);
+                    }
+                }
+                $raw = implode(', ', $values);
+            }
             if (!is_scalar($raw)) {
                 continue;
             }
