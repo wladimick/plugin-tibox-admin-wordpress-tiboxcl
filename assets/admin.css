@@ -49,3 +49,36 @@ a.tbx-card:hover { border-color: var(--tbx-sky); transform: translateY(-2px); co
 .tbx-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .tbx-wrap .button-primary { background: var(--tbx-blue); border-color: var(--tbx-blue); }
 @media (max-width: 782px) { .tbx-slides { grid-template-columns: 1fr; } .tbx-slide { grid-template-columns: 1fr; } .tbx-head { border-radius: 10px 10px 0 0; } }
+
+
+/* Leads: tabla compacta inspirada en TIBOX Leads de Prodata. */
+.tbx-leads-scroll { width: 100%; overflow-x: auto; margin-top: 14px; border-radius: 10px; }
+.tbx-leads-table { min-width: 930px; font-size: 13px; }
+.tbx-wrap .tbx-leads-table thead th { padding: 11px 12px; }
+.tbx-leads-table tbody td { vertical-align: top; padding: 12px; line-height: 1.55; }
+.tbx-leads-table tbody tr:hover td { background: #f6faff; }
+.tbx-leads-date { white-space: nowrap; }
+.tbx-leads-date small,
+.tbx-leads-contact small,
+.tbx-leads-contact a { display: block; margin-top: 2px; }
+.tbx-leads-contact { min-width: 160px; overflow-wrap: anywhere; }
+.tbx-leads-landing { min-width: 130px; }
+.tbx-leads-request { min-width: 155px; }
+.tbx-leads-request small,
+.tbx-leads-source,
+.tbx-leads-table small { color: #64748b; }
+.tbx-leads-message { margin-top: 7px; max-width: 250px; color: #475569; overflow-wrap: anywhere; }
+.tbx-leads-details { min-width: 105px; }
+.tbx-leads-details summary { color: var(--tbx-blue); font-weight: 600; cursor: pointer; white-space: nowrap; }
+.tbx-leads-details-body { margin-top: 10px; padding: 10px; width: min(310px, 70vw); background: var(--tbx-fog); border: 1px solid var(--tbx-line); border-radius: 8px; overflow-wrap: anywhere; }
+.tbx-leads-details-body > div { margin: 4px 0; }
+.tbx-leads-actions { text-align: center; white-space: nowrap; }
+.tbx-leads-actions form { margin: 0; }
+.tbx-leads-delete { color: #b32d2e; text-decoration: underline; cursor: pointer; }
+.tbx-leads-delete:hover, .tbx-leads-delete:focus { color: #8a2424; }
+.tbx-badge--form { background: #e7f0ff; color: #0a4b9c; }
+.tbx-leads-source { margin-top: 6px; font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 782px) {
+  .tbx-leads-table { min-width: 820px; }
+  .tbx-leads-scroll { margin-left: 0; }
+}
