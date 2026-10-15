@@ -3,6 +3,7 @@ define('ABSPATH', __DIR__ . '/');
 function wp_parse_url($value, $component) {
     return parse_url($value, $component);
 }
+function add_action(...$args) { return null; }
 require_once dirname(__DIR__) . '/includes/modules/activity/class-tbx-web-vitals.php';
 
 $cases = [
