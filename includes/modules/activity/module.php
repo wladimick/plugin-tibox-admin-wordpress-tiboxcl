@@ -38,6 +38,8 @@ final class TBX_Activity
         'download_click' => 'Descargas de archivos',
         'outbound_click' => 'Enlaces externos',
         'engaged_15s' => 'Interacción activa (15 segundos)',
+        'navigation_step' => 'Transiciones entre páginas',
+        'repeated_click' => 'Clics repetidos (posible fricción)',
     ];
 
     public static function table(): string
