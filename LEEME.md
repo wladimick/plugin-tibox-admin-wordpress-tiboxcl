@@ -53,3 +53,22 @@ El snippet 44 («Tibox Connect – Endpoint subida de imágenes») tiene una cla
 ## Desinstalar
 
 Al desactivar el plugin se quitan sus menús y tareas programadas, pero **no** se borran los leads, las landings ni la actividad. Si vuelves a activar los snippets, todo sigue funcionando.
+
+
+## Cambios 1.1.0 — Leads y compatibilidad con Prodata
+
+- **Leads:** tabla compacta, información principal visible, origen/campaña y detalles desplegables (ID, RUT, UTM, GCLID y consentimiento).
+- **Borrar:** acción individual desde la tabla principal. Usa POST, permiso manage_options, nonce específico por lead y confirmación. No se habilita desde el metabox de la landing. La eliminación es permanente **solo en la tabla local**: no elimina copias enviadas a WebOps o por correo.
+- **Filtros:** landing, mes y búsqueda (nombre, correo, teléfono, empresa o RUT), paginación y exportación CSV consistentes.
+- **Opciones:** los ajustes del módulo Formularios pasan de tbx_leads_settings a tbx_admin_lead_form_settings para evitar colisiones con la configuración de **Tibox Leads** de Prodata. TIBOX Admin lee el esquema antiguo únicamente si contiene la clave to y aún no se guardó la configuración nueva. Tras actualizar, abrir **Formularios y correos** y guardar para migrar los valores.
+
+### Instalación en Prodata (sin eliminar datos)
+
+1. **Respaldar** los archivos y la base de datos de Prodata; exportar contactos desde Tibox Leads y conservar la tabla {prefix}tbx_leads.
+2. Instalar Tibox Admin 1.1.0 y activar **solo** el módulo **Actividad del sitio**. El resto permanece apagado.
+3. Mantener activo Tibox Leads 1.0.0 para conservar la captación de WPForms/Elementor/CF7/HTML, el historial individual, UTM y referencias de WhatsApp. Tibox Admin registra estadísticas agregadas en {prefix}tibox_activity.
+4. Revisar GTM/GA4: ambos scripts emiten eventos de clic bajo **nombres distintos**, y una configuración de GTM que escuche ambos podría duplicar conversiones. Validar con Tag Assistant.
+5. **No activar el módulo Leads de TIBOX Admin como sustituto de Tibox Leads.** El primero utiliza {prefix}tibox_landing_leads y el endpoint /wp-json/tibox/v1/lead; el segundo, {prefix}tbx_leads, /wp-json/tbx-leads/v1/event y hooks de formularios. No existe migración automática.
+6. Retirar Tibox Leads solo después de portar su captación, conservar los registros y verificar el flujo completo en staging.
+
+> El botón «Borrar» de esta versión afecta a **Leads de landings TIBOX**, no a la tabla de contactos de Prodata.
