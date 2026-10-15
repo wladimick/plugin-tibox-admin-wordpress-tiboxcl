@@ -179,12 +179,21 @@ final class TBX_Activity
         $saved = 0;
 
         foreach ($events as $ev) {
-            $name = sanitize_key($ev['e'] ?? '');
+            if (!is_array($ev)) {
+                continue;
+            }
+            $event_name = $ev['e'] ?? '';
+            if (!is_string($event_name)) {
+                continue;
+            }
+            $name = sanitize_key($event_name);
             if (!isset(self::EVENTS[$name])) {
                 continue;
             }
-            $location = substr(sanitize_key($ev['l'] ?? ''), 0, 60);
-            $label = mb_substr(sanitize_text_field((string) ($ev['t'] ?? '')), 0, 120);
+            $raw_location = isset($ev['l']) && is_string($ev['l']) ? $ev['l'] : '';
+            $raw_label = isset($ev['t']) && is_string($ev['t']) ? $ev['t'] : '';
+            $location = substr(sanitize_key($raw_location), 0, 60);
+            $label = mb_substr(sanitize_text_field($raw_label), 0, 120);
 
             /* Nunca guardar correos o teléfonos completos como etiqueta */
             if (in_array($name, ['phone_click', 'email_click'], true)) {
