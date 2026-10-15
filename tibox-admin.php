@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Tibox Admin
  * Description:       Panel único de Tibox: landings, leads, actividad del sitio y slider. Reemplaza varios snippets de WPCode con módulos que se activan por separado.
- * Version:           1.4.0
+ * Version:           1.5.0
  * Requires at least: 6.2
  * Requires PHP:      8.0
  * Author:            Tibox · Equipo de Diseño
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('TBX_ADMIN_VERSION', '1.4.0');
+define('TBX_ADMIN_VERSION', '1.5.0');
 define('TBX_ADMIN_FILE', __FILE__);
 define('TBX_ADMIN_DIR', plugin_dir_path(__FILE__));
 define('TBX_ADMIN_URL', plugin_dir_url(__FILE__));
