@@ -26,3 +26,7 @@ jobs:
             exit 1
           }
           cat tracking-test.log
+      - name: Verify Web Vitals PHP ratings
+        run: php tests/vitals-rating-smoke.php
+      - name: Verify Web Vitals frontend privacy and batching
+        run: node tests/vitals-smoke.cjs
