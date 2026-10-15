@@ -359,7 +359,7 @@ final class TBX_Contacts
         if ($handle === false) {
             wp_die('No se pudo abrir el archivo CSV.');
         }
-        fwrite($handle, "\\xEF\\xBB\\xBF");
+        fwrite($handle, "\xEF\xBB\xBF");
         $columns = [
             'Fecha y hora', 'Canal', 'Tecnología', 'Contacto', 'Correo', 'Teléfono',
             'Referencia WhatsApp', 'Destino', 'Botón', 'Ubicación',
