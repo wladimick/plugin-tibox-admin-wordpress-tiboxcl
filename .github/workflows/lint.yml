@@ -42,3 +42,5 @@ jobs:
         run: php tests/contacts-delete-csv-smoke.php
       - name: Verify historical WPForms and Landing contacts import and deduplication
         run: php tests/unified-inbox-sources-smoke.php
+      - name: Verify independent WhatsApp button with legacy TIBOX Leads
+        run: php tests/whatsapp-independent-smoke.php
