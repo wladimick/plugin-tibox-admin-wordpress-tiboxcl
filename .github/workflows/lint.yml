@@ -34,6 +34,8 @@ jobs:
         run: node tests/tracking-forms-regression.cjs
       - name: Verify native landing REST conversion success and deduplication
         run: node tests/landing-gtm-bridge-smoke.cjs
+      - name: Verify native XHR landing conversion success and privacy
+        run: node tests/landing-gtm-xhr-smoke.cjs
       - name: Verify no duplicate GTM conversions between landing REST and custom HTML success
         run: node tests/landing-gtm-shared-smoke.cjs
       - name: Verify standalone HTML landing opt-in conversion injection
