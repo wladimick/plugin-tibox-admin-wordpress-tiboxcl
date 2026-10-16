@@ -34,6 +34,8 @@ jobs:
         run: php tests/native-contacts-smoke.php
       - name: Verify contact admin settings with separate tracking and GTM opt-in
         run: php tests/contact-settings-smoke.php
+      - name: Verify confirmed form conversions and legacy GTM parity
+        run: node tests/native-form-conversions-smoke.cjs
       - name: Verify native WhatsApp reference and contact click tracking
         run: node tests/native-clicks-smoke.cjs
       - name: Verify native click REST ingestion and security checks
