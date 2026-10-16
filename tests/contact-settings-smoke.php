@@ -17,12 +17,13 @@ $GLOBALS['tracking'] = '1';
 function add_action(...$args): void {}
 function add_filter(...$args): void {}
 function is_admin(): bool { return true; }
-function is_user_logged_in(): bool { return true; }
+function is_user_logged_in(): bool { return $GLOBALS['logged'] ?? true; }
 function get_option($key, $default = null) {
     return match ($key) {
         'tbx_admin_contact_whatsapp' => $GLOBALS['settings'],
         'tbx_contacts_click_tracking_enabled' => $GLOBALS['tracking'],
         'tbx_contacts_form_gtm_compat_enabled' => $GLOBALS['form_gtm'] ?? '0',
+        'tbx_contacts_native_enabled' => $GLOBALS['native'] ?? '0',
         default => $default,
     };
 }
@@ -74,5 +75,27 @@ TBX_Native_Contacts::render_settings();
 $form_html = ob_get_clean();
 if (str_contains($form_html, 'name="form_gtm_compat" value="1" checked="checked"')) {
     fwrite(STDERR, "Form GTM compatibility toggle must default off\n"); exit(1);
+}
+
+// La captura se puede preparar con el plugin antiguo activo sin registrar
+// duplicados, de modo que el corte controlado no deje una ventana ciega.
+$GLOBALS['native'] = '1';
+$GLOBALS['form_gtm'] = '1';
+$GLOBALS['logged'] = false;
+if (!TBX_Native_Contacts::can_capture() || !TBX_Native_Contacts::can_emit_form_gtm()) {
+    fwrite(STDERR, "Native capture should work before detecting legacy\n"); exit(1);
+}
+eval('function tbx_leads_insert($data) { return 1; }');
+if (TBX_Native_Contacts::can_capture() || TBX_Native_Contacts::can_emit_form_gtm()) {
+    fwrite(STDERR, "Prearmed capture must NOT run while TIBOX Leads is active\n"); exit(1);
+}
+ob_start();
+TBX_Native_Contacts::render_settings();
+$form_html = ob_get_clean();
+if (!str_contains($form_html, 'name="native_enabled" value="1" checked="checked"') ||
+    !str_contains($form_html, 'preparar para activar') ||
+    !str_contains($form_html, 'NO comenzará a registrar') ||
+    str_contains($form_html, 'name="native_enabled" value="1" checked="checked" disabled')) {
+    fwrite(STDERR, "Prearmed mode must be configurable and clearly guarded\n"); exit(1);
 }
 echo "Native contact admin settings smoke tests passed\n";
