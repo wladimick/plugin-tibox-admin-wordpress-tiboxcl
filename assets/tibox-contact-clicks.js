@@ -124,6 +124,29 @@
     } catch (_) {}
   }
 
+  // Paridad opcional con los nombres de eventos del antiguo TIBOX Leads.
+  // Solo se encola el listener cuando TIBOX Leads ya no está activo.
+  // Por defecto permanece deshabilitado para evitar conversiones duplicadas.
+  function pushLegacyGtm(kind, place, label, ref) {
+    if (CONFIG.gtm_legacy !== true ||
+        window.TBX_ANALYTICS_ALLOWED === false ||
+        navigator.globalPrivacyControl === true) return;
+    var eventName = {
+      whatsapp: 'tbx_whatsapp_click',
+      phone: 'tbx_phone_click',
+      email: 'tbx_email_click'
+    }[kind];
+    if (!eventName) return;
+    var eventData = {
+      event: eventName,
+      ubicacion: place,
+      texto_boton: label
+    };
+    if (kind === 'whatsapp' && ref) eventData.tbx_ref = ref;
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push(eventData);
+  }
+
   document.addEventListener('click', function (event) {
     if (!event.target || !event.target.closest) return;
     var a = event.target.closest('a[href]');
@@ -158,11 +181,13 @@
     var label = String((el.getAttribute && (el.getAttribute('data-track') ||
       el.getAttribute('aria-label') || el.getAttribute('title'))) ||
       el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+    var place = whereIs(el);
     send({
       type: kind, ref: ref, destination: destination,
       origin: el.id === 'tbx-wa' ? 'boton-tibox' : 'enlace',
-      button_text: label, location: whereIs(el),
+      button_text: label, location: place,
       path: location.pathname, campaign: attribution()
     });
+    pushLegacyGtm(kind, place, label, ref);
   }, true);
 })();
