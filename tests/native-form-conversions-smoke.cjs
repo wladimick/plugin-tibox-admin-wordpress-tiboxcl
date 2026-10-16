@@ -19,7 +19,7 @@ function create(enabled = true, options = {}) {
     TBX_FORM_GTM_COMPAT: {enabled}
   };
   const navigator = {globalPrivacyControl: Boolean(options.gpc)};
-  vm.runInNewContext(script, {window, navigator, document, Date, decodeURIComponent});
+  vm.runInNewContext(script, {window, navigator, document, Date: options.clock || Date, decodeURIComponent});
   function fire(kind, data, ...extra) {
     const handlers = kind.startsWith('jquery:') ? jq[kind.slice(7)] : dom[kind];
     for (const handler of handlers || []) handler(data, ...extra);
@@ -85,6 +85,17 @@ assert.equal(s.pushed.length, 2, 'Another form can convert even with the same fo
 // Una señal sin formulario reconocible se ignora en vez de inventar form_id.
 s.fire('jquery:wpformsAjaxSubmitSuccess',{target:s.document},{success:true});
 assert.equal(s.pushed.length,2,'Unknown WPForms form must not invent a conversion');
+
+// La deduplicación no puede hacer perder un segundo envío real posterior.
+let fakeNow = Date.now();
+const timed = create(true, {clock:{now:()=>fakeNow}});
+const repeated = form('wpforms','830','Cotización');
+timed.fire('jquery:wpformsAjaxSubmitSuccess',evt(repeated));
+timed.fire('jquery:wpformsAjaxSubmitSuccess',evt(repeated));
+assert.equal(timed.pushed.length,1,'Immediate duplicate callback must not produce two leads');
+fakeNow += 2500;
+timed.fire('jquery:wpformsAjaxSubmitSuccess',evt(repeated));
+assert.equal(timed.pushed.length,2,'New successful submission after 2s must not be lost');
 
 const el = form('elementor', 'contacto-prodata', 'Formulario sitio');
 s.fire('jquery:submit_success', evt(el));
