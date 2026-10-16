@@ -344,3 +344,16 @@ En un entorno de pruebas y con histórico respaldado:
 **Pruebas:** aserciones PHP y JS del modo prearmado, la exclusión mutua de plugins, la inserción de contactos y la generación opcional de `tbx_generate_lead`.
 
 **Sin garantía automática de paridad:** formularios HTML personalizados y configuración GTM/GA4/Ads requieren inventario y pruebas en el sitio. Ver `docs/matriz-paridad-medicion.md`.
+
+
+## TIBOX Admin 1.10.4 beta — confiabilidad de medición de conversiones
+
+- **Dependencia explícita de jQuery** para los dos scripts que capturan eventos de éxito AJAX de WPForms y Elementor.
+- El evento heredado **`tbx_generate_lead`** admite referencias al formulario desde `event.target`, argumentos adicionales de WPForms o colecciones jQuery. Nunca inventa un ID si no puede resolver el formulario.
+- La deduplicación de este evento utiliza la **misma ventana de 2 segundos que `wpforms_submit`**, por formulario; no impide convertir un segundo formulario con igual ID/nombre ni una nueva consulta real más tarde.
+- **`wpforms_submit` de TIBOX Admin Actividad** conserva su nombre, formato y tipificación comercial. Se evita un segundo evento para callbacks AJAX duplicados.
+- **WPForms no AJAX** conserva la conversión una vez procesado correctamente el formulario por WPForms, aunque falle temporalmente el guardado de la **copia secundaria** en la tabla Contactos. La incidencia de BD permanece registrada por separado.
+- El módulo Contactos **solo marca un envío como duplicado después de insertarlo correctamente**; si falla la BD puede reintentarse en el mismo proceso sin pérdida de contacto por falso duplicado.
+- Cobertura CI ampliada: `tests/native-form-conversions-smoke.cjs`, `tests/tracking-forms-regression.cjs`, `tests/native-form-php-smoke.php`. La instalación y la medición real en Prodata/TIBOX siguen sujetas al checklist de `docs/matriz-paridad-medicion.md`.
+
+**Instalador actualizado:** `v1.10.4-beta.1/tibox-admin-1.10.4-beta.zip` solo para staging. No desactivar el plugin TIBOX Leads antiguo en producción sin QA del histórico, formularios y GTM/GA4/Ads.
