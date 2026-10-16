@@ -676,11 +676,9 @@ final class TBX_Native_Contacts
         }
         check_admin_referer('tbx_contacts_native_settings');
         $enable = !empty($_POST['native_enabled']);
-        if ($enable && self::legacy_active()) {
-            update_option(self::OPTION, '0', false);
-            wp_safe_redirect(add_query_arg('native', 'legacy_active', TBX_Admin::tab_url('contactos')));
-            exit;
-        }
+        // Es seguro preparar la captura con TIBOX Leads activo: can_capture()
+        // exige que el legado ya no esté cargado y bloquea tanto hooks como JS.
+        // Esto evita un intervalo sin registros durante un corte controlado.
         update_option(self::OPTION, $enable ? '1' : '0', false);
         update_option(self::FORM_GTM_OPTION, !empty($_POST['form_gtm_compat']) ? '1' : '0', false);
         wp_safe_redirect(add_query_arg('native', 'saved', TBX_Admin::tab_url('contactos')));
@@ -692,7 +690,7 @@ final class TBX_Native_Contacts
         echo '<div class="tbx-import-card"><h2>Captura directa de formularios</h2>';
         echo '<p>Registra envíos confirmados de WPForms, Elementor y Contact Form 7. El seguimiento de WhatsApp, teléfono y correo se configura por separado en «Botón flotante de WhatsApp».</p>';
         if (self::legacy_active()) {
-            echo '<div class="notice notice-warning inline"><p>El plugin original TIBOX Leads sigue activo: la captura directa está bloqueada para evitar duplicados. Mantén este plugin antiguo durante la importación del historial.</p></div>';
+            echo '<div class="notice notice-warning inline"><p>TIBOX Leads sigue activo: conservará en exclusiva el registro de formularios. Puedes dejar preparada la captura nativa, pero <strong>NO comenzará a registrar</strong> hasta desactivar el antiguo plugin. Hazlo solo después de respaldar y en una ventana de pruebas; al desactivarlo, TIBOX Admin tomará el control automáticamente.</p></div>';
         }
         if (isset($_GET['native']) && sanitize_key(wp_unslash($_GET['native'])) === 'saved') {
             echo '<div class="notice notice-success inline"><p>Configuración guardada.</p></div>';
@@ -701,16 +699,15 @@ final class TBX_Native_Contacts
         echo '<input type="hidden" name="action" value="tbx_contacts_native_settings">';
         wp_nonce_field('tbx_contacts_native_settings');
         echo '<label><input type="checkbox" name="native_enabled" value="1"' .
-            checked(self::enabled(), true, false) . (self::legacy_active() ? ' disabled' : '') .
-            '> Registrar formularios directamente desde TIBOX Admin</label>';
-        if (self::legacy_active()) {
-            echo '<input type="hidden" name="native_enabled" value="0">';
-        }
+            checked(self::enabled(), true, false) .
+            '> Registrar formularios directamente desde TIBOX Admin' .
+            (self::legacy_active() ? ' (preparar para activar al retirar TIBOX Leads)' : '') .
+            '</label>';
         echo '<p><label><input type="checkbox" name="form_gtm_compat" value="1"' .
             checked(self::form_gtm_enabled(), true, false) .
             '> Compatibilidad GTM: emitir tbx_generate_lead SOLO tras confirmar envíos de formularios</label></p>';
         echo '<p class="tbx-muted">Opcional y desactivado por defecto. Durante la convivencia con TIBOX Leads no emite eventos nuevos. Revisar en GTM si ya existen triggers para wpforms_submit, form_submit, generate_lead o submit_lead_form; NO deben marcarse dos conversiones por un mismo envío.</p>';
-        echo '<p class="tbx-muted">Desactivada por defecto. Primero importa y comprueba el historial, realiza un respaldo y desactiva TIBOX Leads; después habilita esta opción y prueba un formulario de cada tipo. No requiere mantener el plugin anterior.</p>';
+        echo '<p class="tbx-muted">Desactivada por defecto. Primero importa y comprueba el histórico y realiza un respaldo. Para un cambio sin interrupción puedes preparar la casilla mientras el legado siga activo: TIBOX Admin NO captura hasta que el legado se desactive. Comprueba todos los formularios tras el corte y mantén disponible el rollback.</p>';
         submit_button('Guardar configuración', 'secondary', 'submit', false);
         echo '</form></div>';
     }
