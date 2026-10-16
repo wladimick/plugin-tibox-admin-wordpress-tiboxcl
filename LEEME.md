@@ -283,3 +283,21 @@ Dentro de **Importaciones y configuración de capturas → Botón flotante de Wh
 
 ### Limitaciones
 No se ha probado el flujo real del WhatsApp de Prodata en un navegador conectado a la producción. Los enlaces de widgets no editables pueden registrar el clic sin una referencia; los acortadores `wa.link` tampoco garantizan el mensaje con referencia. La atribución del visitante no reproduce automáticamente la cookie persistente del plugin antiguo. Cumplimiento de consentimiento debe revisarse con el CMP real del sitio.
+
+
+### Protocolo de aceptación para instalación en TIBOX y Prodata — 16/10/2026
+
+**Preparación (sin tocar producción durante el desarrollo):**
+1. Backup de archivos y base de datos de ambos WordPress. Guardar una copia del ZIP instalado y documentar la versión actual.
+2. Comprobar que `TIBOX Admin → Contactos` contiene el histórico esperado antes y después de actualizar. En Prodata, exportar también desde TIBOX Leads si es posible.
+3. Instalar el ZIP en staging y limpiar caché del sitio, caché de plugins y CDN. La compilación beta no está declarada estable.
+4. Configurar WhatsApp: activar botón, validar teléfono en formato internacional, mensaje y lado; activar registro de clics. Mantener captura directa de formularios desactivada mientras el legado esté activo.
+5. **Probar como visitante sin iniciar sesión en WordPress** (incógnito o dispositivo externo): la captura nativa omite usuarios autenticados para no contaminar estadísticas. Probar en móvil y escritorio.
+6. Con ambos plugins activos en Prodata, comprobar un único botón y que los clics sigan llegando por el capturador antiguo. Registrar una referencia de seis caracteres y buscarla en ambos paneles.
+7. Solo en staging, desactivar **sin desinstalar** TIBOX Leads. Repetir clic flotante y enlace WhatsApp, verificar `Ref: XXXXXX` visible en el mensaje, un contacto en bandeja y origen/página/dispositivo correctos. Revisar también `tel:` y `mailto:`.
+8. Tras desactivar el legado en staging, activar captura directa de formularios y enviar un formulario real de WPForms, Elementor y CF7, cuando existan. Revisar respuestas completas, correos, registros y ausencia de duplicados.
+9. Comprobar enlaces WhatsApp externos y widgets que usen acortadores: **no todos permiten insertar referencias**. La ausencia de referencia en un `wa.link` opaco no implica fallo del registro del clic.
+10. Comparar GTM/GA4 antes/después para evitar conversiones duplicadas. Confirmar que el aviso/gestor de consentimiento funciona y que las estadísticas respetan la configuración de privacidad.
+11. Si falla cualquier paso, desactivar captura nativa y registro nativo de clics, reactivar el plugin anterior y revisar que su botón y captación se recuperen. No eliminar las tablas antiguas.
+
+**Criterio de cierre:** aprobar la operación de los dos sitios con evidencias de navegador y BD, registrar resultados en TIBOX Projects #1416 y recién entonces plantear retirar TIBOX Leads. Un clic registrado es intención de contacto, no prueba de mensaje recibido en WhatsApp.
