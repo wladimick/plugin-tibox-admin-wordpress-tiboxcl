@@ -56,6 +56,13 @@
     name = normalized(name, 150);
     var now = Date.now();
     var key = origin + '|' + id + '|' + name;
+    if (origin === 'html') {
+      // Puente REST + integración HTML explícita pueden confirmar el MISMO
+      // lead. Compartir deduplicación sin bloquear otros tipos de formulario.
+      var recent = window.__tbxRecentHtmlGtm || (window.__tbxRecentHtmlGtm = Object.create(null));
+      if (now - (recent[id] || 0) < 2000) return false;
+      recent[id] = now;
+    }
     if (form) {
       // Formulario concreto: no bloquear otro formulario con mismo ID/nombre.
       // Algunos plugins disparan dos callbacks para el mismo envío AJAX.
