@@ -73,6 +73,7 @@ final class TBX_Native_Contacts
         $settings['wa_label'] = $wa['label'];
         $settings['wa_side'] = $wa['side'];
         $settings['wa_ref'] = 1; // Ref: XXXXXX sigue viniendo del capturador legado.
+        $settings['unify'] = $wa['unify'] === '1' ? 1 : 0;
         return $settings;
     }
 
@@ -513,9 +514,11 @@ final class TBX_Native_Contacts
             $candidate = self::scalar($candidate, 100);
             $attrs[$key] = preg_match('/@|https?:|%40/i', $candidate) ? '' : $candidate;
         }
+        $raw_origin = isset($body['origin']) && is_string($body['origin'])
+            ? sanitize_key($body['origin']) : '';
         $data = [
             'type' => $type,
-            'origin' => 'enlace',
+            'origin' => $raw_origin === 'boton-tibox' ? 'boton-tibox' : 'enlace',
             'location' => sanitize_key(self::scalar($body['location'] ?? '', 40)),
             'button_text' => self::scalar($body['button_text'] ?? '', 100),
             'destination' => $dest,
