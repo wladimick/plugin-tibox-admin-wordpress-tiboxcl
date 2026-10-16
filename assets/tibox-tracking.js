@@ -318,27 +318,46 @@
   document.addEventListener('change', onFormInput, true);
 
   function confirmed(form) {
-    if (!form || !form.matches(FORM_SELECTOR)) return;
+    if (!form || !form.matches(FORM_SELECTOR)) return false;
     // Ignora hooks duplicados por 2 segundos, sin bloquear envíos legítimos posteriores.
     var now = Date.now();
-    if (form.__tbxSuccessAt && now - form.__tbxSuccessAt < 2000) return;
+    if (form.__tbxSuccessAt && now - form.__tbxSuccessAt < 2000) return false;
     form.__tbxSuccessAt = now;
     log('form_success', formInfo(form)); // No crea otra conversión en GTM.
+    return true;
+  }
+  function eventForm(event, selector, extra) {
+    var candidates = [event && event.target, extra && extra.form, extra,
+      event && event.originalEvent && event.originalEvent.target];
+    for (var i = 0; i < candidates.length; i++) {
+      var candidate = candidates[i];
+      if (candidate && candidate.jquery) candidate = candidate[0];
+      if (!candidate) continue;
+      if (candidate.matches && candidate.matches(selector)) return candidate;
+      if (candidate.closest) {
+        var found = candidate.closest(selector);
+        if (found) return found;
+      }
+    }
+    return null;
   }
   function bindForms() {
     if (window.jQuery) {
-      window.jQuery(document).on('wpformsAjaxSubmitSuccess', function (e) {
-        var form = e.target.closest && e.target.closest('form.wpforms-form');
+      window.jQuery(document).on('wpformsAjaxSubmitSuccess', function (e, response, formArg) {
+        var form = eventForm(e, 'form.wpforms-form', formArg || response);
         if (!form) return;
-        push('wpforms_submit', formInfo(form)); // Evento legacy existente.
-        confirmed(form);
+        // Solo una conversión WPForms por éxito confirmado, aunque otros
+        // listeners del constructor emitan callbacks repetidos.
+        if (confirmed(form)) {
+          push('wpforms_submit', formInfo(form)); // Nombre legado de Actividad; NO cambiar.
+        }
       });
-      window.jQuery(document).on('wpformsAjaxSubmitFailed wpformsAjaxSubmitActionRequired', function (e) {
-        var form = e.target.closest && e.target.closest('form.wpforms-form');
+      window.jQuery(document).on('wpformsAjaxSubmitFailed wpformsAjaxSubmitActionRequired', function (e, response, formArg) {
+        var form = eventForm(e, 'form.wpforms-form', formArg || response);
         if (form) push('form_error', Object.assign(formInfo(form), { error_type: 'envio_rechazado' }));
       });
       window.jQuery(document).on('submit_success', function (e) {
-        var form = e.target.closest && e.target.closest('form.elementor-form');
+        var form = eventForm(e, 'form.elementor-form');
         if (form) confirmed(form);
       });
     }
