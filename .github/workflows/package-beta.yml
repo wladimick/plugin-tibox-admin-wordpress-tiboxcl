@@ -18,6 +18,7 @@ jobs:
           php tests/context-smoke.php
           php tests/vitals-rating-smoke.php
           php tests/native-contacts-smoke.php
+          php tests/native-form-php-smoke.php
           php tests/contact-settings-smoke.php
           php tests/native-click-endpoint-smoke.php
           node tests/tracking-smoke.cjs
