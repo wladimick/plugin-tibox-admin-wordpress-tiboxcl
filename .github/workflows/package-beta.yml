@@ -23,6 +23,7 @@ jobs:
           node tests/tracking-smoke.cjs
           node tests/vitals-smoke.cjs
           node tests/native-clicks-smoke.cjs
+          node tests/native-form-conversions-smoke.cjs
           node tests/native-wa-button-smoke.cjs
           php tests/contacts-delete-csv-smoke.php
           php tests/unified-inbox-sources-smoke.php
