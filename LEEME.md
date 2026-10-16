@@ -329,3 +329,18 @@ Se añadió una capa **opt-in** para el evento heredado `tbx_generate_lead` con 
 Consulta el documento detallado [Matriz de paridad de medición](docs/matriz-paridad-medicion.md) para nombres de eventos, etiquetas que podrían duplicarse y el plan de QA por sitio.
 
 **Límite de garantía:** el código y sus tests comprueban emisiones esperadas; la configuración de GTM, los eventos recibidos por GA4, las acciones de conversión en Ads y las landings HTML específicas son externos a este repositorio y deben validarse con Preview/DebugView antes de retirar TIBOX Leads.
+
+
+## TIBOX Admin 1.10.3 beta — traspaso de captación sin interrupción
+
+**Prearmado explícito de formularios:** en `TIBOX Admin → Contactos → Captura directa de formularios` ahora puedes marcar «Registrar formularios directamente» aun cuando TIBOX Leads está activo. Esto guarda el ajuste, pero **no ejecuta hooks de captura, no carga el script nativo de conversiones y no duplica registros** mientras se detecte TIBOX Leads.
+
+En un entorno de pruebas y con histórico respaldado:
+1. Con ambos plugins activos, deja preparada la captura nativa de formularios y, por separado, el registro nativo de clics. No se alteran las tablas de TIBOX Leads.
+2. Activa los switches heredados de GTM **solo después de inventariar sus disparadores y definir una única conversión por acción**; pueden quedar sin activar si GTM ya mide con otros eventos.
+3. Desactiva (NO desinstales) el plugin antiguo: TIBOX Admin activará automáticamente capturas preparadas para visitantes. Borrar cachés e ir a una ventana de incógnito para comprobar contactos, referencias y dataLayer.
+4. Si una prueba falla, desactiva las capturas nativas y reactiva el plugin anterior; documenta diferencias antes de hacer cualquier cambio a producción.
+
+**Pruebas:** aserciones PHP y JS del modo prearmado, la exclusión mutua de plugins, la inserción de contactos y la generación opcional de `tbx_generate_lead`.
+
+**Sin garantía automática de paridad:** formularios HTML personalizados y configuración GTM/GA4/Ads requieren inventario y pruebas en el sitio. Ver `docs/matriz-paridad-medicion.md`.
