@@ -53,6 +53,7 @@ ensure($filtered['wa_on'] === 0, 'Legacy floating button must be suppressed at r
 ensure($filtered['wa_number'] === '56912345678', 'Legacy tracking must use new TIBOX button number');
 ensure($filtered['wa_message'] === $GLOBALS['wa_settings']['message'], 'Legacy tracking must use new message');
 ensure($filtered['wa_ref'] === 1, 'Legacy tracking must keep reference codes');
+ensure($filtered['unify'] === 0, 'Legacy site-wide WhatsApp unification must follow new option');
 ensure($old['wa_on'] === 1 && $old['wa_number'] === '56999999999',
     'Legacy saved settings cannot be modified');
 
