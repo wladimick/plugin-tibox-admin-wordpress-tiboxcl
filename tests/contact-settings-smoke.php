@@ -1,0 +1,62 @@
+<?php
+/**
+ * Ajustes de WhatsApp: el administrador autenticado no puede confundirse
+ * con un visitante. Su sesión no registra eventos, pero la opción persiste.
+ */
+define('ABSPATH', __DIR__ . '/');
+$GLOBALS['settings'] = [
+    'enabled'=>'1',
+    'number'=>'56912345678',
+    'label'=>'Cotizar por WhatsApp',
+    'message'=>'Hola desde {pagina}',
+    'side'=>'right',
+    'gtm_legacy'=>'1',
+    'unify'=>'0',
+];
+$GLOBALS['tracking'] = '1';
+function add_action(...$args): void {}
+function add_filter(...$args): void {}
+function is_admin(): bool { return true; }
+function is_user_logged_in(): bool { return true; }
+function get_option($key, $default = null) {
+    return match ($key) {
+        'tbx_admin_contact_whatsapp' => $GLOBALS['settings'],
+        'tbx_contacts_click_tracking_enabled' => $GLOBALS['tracking'],
+        default => $default,
+    };
+}
+function checked($actual, $expected, $echo = true): string { return $actual == $expected ? ' checked="checked"' : ''; }
+function selected($actual, $expected, $echo = true): string { return $actual == $expected ? ' selected="selected"' : ''; }
+function esc_attr($value): string { return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); }
+function esc_textarea($value): string { return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); }
+function esc_html($value): string { return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); }
+function esc_url($value): string { return (string)$value; }
+function admin_url($value): string { return '/wp-admin/' . $value; }
+function wp_nonce_field($name): void { echo '<input type="hidden" name="_nonce">'; }
+function submit_button(...$args): void { echo '<button>Guardar</button>'; }
+
+require_once dirname(__DIR__) . '/includes/modules/contacts/class-tbx-native-capture.php';
+ob_start();
+TBX_Native_Contacts::render_wa_settings();
+$html = ob_get_clean();
+if (!str_contains($html, 'Seguimiento preparado') || str_contains($html, 'registro individual de clics está desactivado')) {
+    fwrite(STDERR, "Tracking enabled must be shown accurately in admin screen\n"); exit(1);
+}
+if (!str_contains($html, 'name="tbx_wa[gtm_legacy]" value="1" checked="checked"')) {
+    fwrite(STDERR, "GTM opt-in setting must display checked state\n"); exit(1);
+}
+if (!str_contains($html, 'name="tbx_wa[track_clicks]" value="1" checked="checked"')) {
+    fwrite(STDERR, "Click tracking must display checked state\n"); exit(1);
+}
+$GLOBALS['tracking'] = '0';
+$GLOBALS['settings']['gtm_legacy'] = '0';
+ob_start();
+TBX_Native_Contacts::render_wa_settings();
+$html = ob_get_clean();
+if (!str_contains($html, 'registro individual de clics está desactivado')) {
+    fwrite(STDERR, "Disabled click tracking warning missing\n"); exit(1);
+}
+if (str_contains($html, 'name="tbx_wa[gtm_legacy]" value="1" checked="checked"')) {
+    fwrite(STDERR, "GTM toggle should be off by default\n"); exit(1);
+}
+echo "Native contact admin settings smoke tests passed\n";
