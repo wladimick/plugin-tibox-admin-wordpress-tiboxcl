@@ -54,10 +54,9 @@ function form(type, id, name) {
   };
 }
 function evt(target, detail) {
-  return {target: {
-    ...target,
-    closest: selector => target.matches && target.matches(selector) ? target : null
-  }, detail};
+  // El elemento DOM mantiene la misma identidad entre callbacks. Clonarlo
+  // impediría probar correctamente la deduplicación por WeakMap.
+  return {target, detail};
 }
 
 let s = create();
