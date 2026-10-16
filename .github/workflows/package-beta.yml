@@ -22,6 +22,7 @@ jobs:
           php tests/contact-settings-smoke.php
           php tests/native-click-endpoint-smoke.php
           node tests/tracking-smoke.cjs
+          node tests/tracking-forms-regression.cjs
           node tests/vitals-smoke.cjs
           node tests/native-clicks-smoke.cjs
           node tests/native-form-conversions-smoke.cjs
