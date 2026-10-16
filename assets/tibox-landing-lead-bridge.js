@@ -6,7 +6,8 @@
  */
 (function () {
   'use strict';
-  if (window.__tbxLandingLeadBridge || window.TBX_ANALYTICS_ALLOWED === false ||
+  if (window.__tbxLandingLeadBridge || window.__tbxLeads ||
+      window.TBX_ANALYTICS_ALLOWED === false ||
       navigator.globalPrivacyControl === true) return;
   var config = window.TBX_LANDING_GTM_COMPAT || {};
   if (config.enabled !== true || typeof window.fetch !== 'function') return;
