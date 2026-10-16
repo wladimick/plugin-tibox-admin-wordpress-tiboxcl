@@ -11,7 +11,8 @@
 .tbx-native-wa--left { left: 20px; }
 .tbx-native-wa:hover { background: #07663b; transform: translateY(-2px); }
 .tbx-native-wa:focus-visible { outline: 3px solid #fff; outline-offset: 3px; box-shadow: 0 0 0 6px #087d48; }
-.tbx-native-wa__icon { font-size: 29px; line-height: 1; }
+.tbx-native-wa__icon { display: inline-flex; align-items: center; justify-content: center; line-height: 1; flex: none; }
+.tbx-native-wa__icon svg { width: 27px; height: 27px; display: block; stroke: currentColor; }
 @media (max-width: 767px) {
   .tbx-native-wa { bottom: 16px; width: 54px; height: 54px; padding: 0; }
   .tbx-native-wa--right { right: 16px; }

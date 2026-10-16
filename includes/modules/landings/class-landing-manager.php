@@ -851,6 +851,31 @@ final class TIBOX_Landing_Manager
             self::render_canvas($post);
         }
     }
+    /**
+     * Las landings en modo HTML completo omiten wp_head/wp_footer.
+     * Inyectamos el puente independiente solo si el usuario habilitó
+     * la compatibilidad de conversiones, sin modificar el HTML almacenado.
+     */
+    public static function inject_native_gtm_bridge(string $html): string
+    {
+        if (!class_exists('TBX_Native_Contacts', false)) {
+            return $html;
+        }
+        $script = TBX_Native_Contacts::full_html_form_gtm_snippet();
+        if ($script === '' || strpos($html, 'id="tbx-landing-lead-bridge"') !== false) {
+            return $html;
+        }
+        if (preg_match('/<head\\b[^>]*>/i', $html)) {
+            return preg_replace_callback('/<head\\b[^>]*>/i',
+                static fn (array $match): string => $match[0] . "\n" . $script, $html, 1) ?? $html;
+        }
+        if (stripos($html, '</body>') !== false) {
+            return preg_replace_callback('/<\\/body\\s*>/i',
+                static fn (array $match): string => $script . "\n" . $match[0], $html, 1) ?? $html;
+        }
+        return $html . "\n" . $script;
+    }
+
     private static function render_full_document(
         WP_Post $post
     ): void {
@@ -892,6 +917,7 @@ final class TIBOX_Landing_Manager
             $html,
             $replacements
         );
+        $html = self::inject_native_gtm_bridge($html);
         echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
         exit;
     }

@@ -42,6 +42,7 @@ assert.equal(el.id,'tbx-wa');
 assert.match(el.className,/--left/);
 assert.match(new URL(el.href).searchParams.get('text'),/Hola desde prodata.cl, veo Pórticos de seguridad/);
 assert.equal(el.children[1].textContent,'Cotiza con nosotros');
+assert.match(el.children[0].innerHTML, /<svg viewBox="0 0 32 32"/, 'WA CTA needs a recognizable chat icon');
 for (const fn of listeners.click) fn({target:{closest: sel => sel === 'a[href]' ? el : null}});
 assert.equal(events.length,1);
 assert.equal(events[0].type,'whatsapp');

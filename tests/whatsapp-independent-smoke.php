@@ -19,6 +19,7 @@ function get_option($name, $default = null) {
     return match ($name) {
         'tbx_admin_contact_whatsapp' => $GLOBALS['wa_settings'],
         'tbx_contacts_native_enabled' => '0',
+        'tbx_contacts_click_tracking_enabled' => '1',
         default => $default
     };
 }
@@ -37,6 +38,7 @@ function ensure($pass, $why) {
 }
 ensure(TBX_Native_Contacts::legacy_active(), 'Legacy plugin is required to be active');
 ensure(!TBX_Native_Contacts::can_capture(), 'Native form capture must remain disabled');
+ensure(!TBX_Native_Contacts::can_capture_clicks(), 'Native click recording must be blocked while legacy is active');
 ensure(TBX_Native_Contacts::wa_button_enabled(), 'WA button should be enabled independently');
 TBX_Native_Contacts::enqueue_clicks();
 ensure(!$GLOBALS['scripts'], 'Native tracking JS must not load with legacy');
@@ -51,6 +53,7 @@ ensure($filtered['wa_on'] === 0, 'Legacy floating button must be suppressed at r
 ensure($filtered['wa_number'] === '56912345678', 'Legacy tracking must use new TIBOX button number');
 ensure($filtered['wa_message'] === $GLOBALS['wa_settings']['message'], 'Legacy tracking must use new message');
 ensure($filtered['wa_ref'] === 1, 'Legacy tracking must keep reference codes');
+ensure($filtered['unify'] === 0, 'Legacy site-wide WhatsApp unification must follow new option');
 ensure($old['wa_on'] === 1 && $old['wa_number'] === '56999999999',
     'Legacy saved settings cannot be modified');
 

@@ -252,3 +252,125 @@ La versión 1.9 no fusiona físicamente ni elimina tablas origen, y no envía co
 - Las opciones del botón y las estadísticas siguen en tablas/opciones separadas. Verificar en Prodata tras actualizar y limpiar caché de página/CDN/minificación.
 
 Se agregan pruebas PHP de independencia y convivencia más pruebas JS de botón mostrado aun con seguimiento desactivado. **No se han ejecutado pruebas de navegador sobre el WordPress de Prodata en producción.**
+
+ 
+## TIBOX Admin 1.10.0 beta — WhatsApp nativo y transición desde TIBOX Leads
+
+La captura de **clics WhatsApp/teléfono/correo** ahora es **independiente** de **Captura directa de formularios**.
+
+### Controles en TIBOX Admin → Contactos
+Dentro de **Importaciones y configuración de capturas → Botón flotante de WhatsApp**:
+- **Mostrar botón flotante:** controla el botón visible, mensaje, número y posición. No implica activar analítica ni capturar formularios.
+- **Registrar clics de WhatsApp, teléfono y correo en Contactos:** guarda eventos individuales nativos desde el endpoint `/wp-json/tibox/v1/contact-event`, incluso con Captura directa de formularios apagada; esta configuración es opcional y desactivada por defecto.
+- **Unificar otros enlaces WhatsApp con el número y mensaje configurados:** opción voluntaria para sitios que deben utilizar un solo número. Desactivada por defecto para no alterar números diferentes.
+- La opción nueva puede prepararse mientras el plugin antiguo siga activo, pero **no recopila eventos nativamente hasta desactivar TIBOX Leads**. Durante convivencia, TIBOX Leads continúa registrando y sincronizando los clics.
+- El botón propio de TIBOX Admin se muestra con su código independiente. El botón antiguo se oculta **solo en el frontend** mientras el nuevo esté habilitado; no se modifica la configuración histórica del plugin antiguo.
+
+### Equivalencia de tracking WhatsApp
+- Reconoce `wa.me`, `wa.link`, enlaces `api.whatsapp.com`, `web.whatsapp.com`, `chat.whatsapp.com`, esquemas `whatsapp:` y algunos widgets clásicos.
+- Genera una referencia de seis caracteres con `crypto.getRandomValues` y la agrega al mensaje solo si el enlace admite edición y contiene un número válido, o si está habilitada la unificación al número configurado. **No crea referencias que el cliente no verá** (enlaces cortos y widgets no editables se guardan sin referencia).
+- Registra fecha, página, dispositivo, navegador, SO, posición y nombre del enlace; también fuente, medio y campaña UTM cuando están disponibles en URL o sesión del módulo Actividad. Sin cookie persistente, IP, User-Agent completo ni identificador estable de visitante.
+- El registro nativo se envía solo a Contactos y **no crea eventos nuevos en GTM**. Los clics son intenciones de contacto, no mensajes confirmados ni ventas.
+
+### Secuencia segura para Prodata
+1. **No desactivar el plugin antiguo inmediatamente.** Hacer backup de BD y archivos.
+2. Confirmar que todos los registros históricos de TIBOX Leads se importaron a Contactos y que las últimas referencias WhatsApp aparecen en ambos paneles.
+3. Instalar 1.10.0 **en staging** y preparar botón y seguimiento nativo en Contactos. Mientras TIBOX Leads siga activo, solo él registra clics y formularios.
+4. Realizar una prueba controlada en staging: desactivar (no borrar) TIBOX Leads, conservar su tabla; dejar **Registrar clics** activo. Probar WhatsApp flotante y enlaces de cada tipo, que se agregue la referencia visible en el mensaje y exista **un único registro en Contactos**; probar teléfono y correo.
+5. Si se pretende retirar TIBOX Leads por completo, habilitar también **Captura directa de formularios** después de desactivar el antiguo y comprobar WPForms, Elementor y CF7. Revisar formularios HTML personalizados y scripts manuales `window.tbxLeads.lead()`: todavía no hay paridad garantizada con ese mecanismo del legado. Hacer un inventario y migrarlos si se usan.
+6. Comprobar GTM/GA4, consentimientos, mobile/desktop y rendimiento. Solo después programar el corte real en Prodata y TIBOX.
+7. Rollback: apagar Registro de clics y Captura nativa, reactivar TIBOX Leads, verificar registros y botón. **No desinstalar** el antiguo hasta finalizar la homologación.
+
+### Limitaciones
+No se ha probado el flujo real del WhatsApp de Prodata en un navegador conectado a la producción. Los enlaces de widgets no editables pueden registrar el clic sin una referencia; los acortadores `wa.link` tampoco garantizan el mensaje con referencia. La atribución del visitante no reproduce automáticamente la cookie persistente del plugin antiguo. Cumplimiento de consentimiento debe revisarse con el CMP real del sitio.
+
+
+### Protocolo de aceptación para instalación en TIBOX y Prodata — 16/10/2026
+
+**Preparación (sin tocar producción durante el desarrollo):**
+1. Backup de archivos y base de datos de ambos WordPress. Guardar una copia del ZIP instalado y documentar la versión actual.
+2. Comprobar que `TIBOX Admin → Contactos` contiene el histórico esperado antes y después de actualizar. En Prodata, exportar también desde TIBOX Leads si es posible.
+3. Instalar el ZIP en staging y limpiar caché del sitio, caché de plugins y CDN. La compilación beta no está declarada estable.
+4. Configurar WhatsApp: activar botón, validar teléfono en formato internacional, mensaje y lado; activar registro de clics. Mantener captura directa de formularios desactivada mientras el legado esté activo.
+5. **Probar como visitante sin iniciar sesión en WordPress** (incógnito o dispositivo externo): la captura nativa omite usuarios autenticados para no contaminar estadísticas. Probar en móvil y escritorio.
+6. Con ambos plugins activos en Prodata, comprobar un único botón y que los clics sigan llegando por el capturador antiguo. Registrar una referencia de seis caracteres y buscarla en ambos paneles.
+7. Solo en staging, desactivar **sin desinstalar** TIBOX Leads. Repetir clic flotante y enlace WhatsApp, verificar `Ref: XXXXXX` visible en el mensaje, un contacto en bandeja y origen/página/dispositivo correctos. Revisar también `tel:` y `mailto:`.
+8. Tras desactivar el legado en staging, activar captura directa de formularios y enviar un formulario real de WPForms, Elementor y CF7, cuando existan. Revisar respuestas completas, correos, registros y ausencia de duplicados.
+9. Comprobar enlaces WhatsApp externos y widgets que usen acortadores: **no todos permiten insertar referencias**. La ausencia de referencia en un `wa.link` opaco no implica fallo del registro del clic.
+10. Comparar GTM/GA4 antes/después para evitar conversiones duplicadas. Confirmar que el aviso/gestor de consentimiento funciona y que las estadísticas respetan la configuración de privacidad.
+11. Si falla cualquier paso, desactivar captura nativa y registro nativo de clics, reactivar el plugin anterior y revisar que su botón y captación se recuperen. No eliminar las tablas antiguas.
+
+**Criterio de cierre:** aprobar la operación de los dos sitios con evidencias de navegador y BD, registrar resultados en TIBOX Projects #1416 y recién entonces plantear retirar TIBOX Leads. Un clic registrado es intención de contacto, no prueba de mensaje recibido en WhatsApp.
+
+ 
+## Actualización 1.10.1 beta — antes de instalar en Prodata y TIBOX
+
+Esta iteración agrega:
+- Eventos `tbx_whatsapp_click`, `tbx_phone_click`, `tbx_email_click` en `dataLayer` como compatibilidad **opcional** con los disparadores históricos de Google Tag Manager. **Desactivado por defecto**, solo disponible cuando el capturador nativo toma el control y se respetan señales de consentimiento/GPC. Revisar primero GTM para evitar conversiones duplicadas.
+- Arreglo del estado mostrado en WordPress: el administrador conectado verá «Seguimiento preparado» cuando corresponda. Las pruebas de clics deben hacerse como visitante en incógnito para no contaminar el informe.
+- Icono de conversación/teléfono SVG estático del botón flotante, accesible y sin dependencia de fuentes o servicios externos.
+- Nuevas pruebas automatizadas de dataLayer, consentimiento, detección de duplicados, estado del panel e icono.
+
+**Nueva descarga para staging:** `v1.10.1-beta.1/tibox-admin-1.10.1-beta.zip`. La versión anterior 1.10.0 beta continúa siendo un antecedente histórico, no utilizarla para nuevas instalaciones de prueba. Las dos versiones son betas; ninguna supone que TIBOX Leads esté desactivado ni que la compatibilidad real se haya validado.
+
+
+## TIBOX Admin 1.10.2 beta — compatibilidad de conversiones verificada en código
+
+Se añadió una capa **opt-in** para el evento heredado `tbx_generate_lead` con las claves originales `form_id`, `form_name` y `origen_formulario`:
+- **WPForms AJAX:** usa `wpformsAjaxSubmitSuccess` y deduplicación de callbacks.
+- **WPForms no AJAX:** el backend deja cookie corta con solo el ID del formulario si guardó el contacto; se consume una sola vez en la navegación posterior.
+- **Elementor Pro:** escucha `submit_success`.
+- **Contact Form 7:** escucha `wpcf7mailsent`.
+- **HTML a medida:** reconoce `tbx:form-success` enviado por integración propia después de la confirmación del backend; no considera un clic en Enviar como lead.
+- Cuando TIBOX Leads permanece activo, el script nativo **no se carga**. Respeta consentimiento del sitio (`TBX_ANALYTICS_ALLOWED`), Global Privacy Control, evita duplicados y no añade PII al `dataLayer`.
+- La captura nativa de formularios continúa funcionando aunque la opción GTM heredada esté apagada; ambas son ajustes independientes.
+- La configuración aparece en **TIBOX Admin → Contactos → Captura directa de formularios → Compatibilidad GTM: emitir tbx_generate_lead** y viene **desactivada por defecto**.
+
+Consulta el documento detallado [Matriz de paridad de medición](docs/matriz-paridad-medicion.md) para nombres de eventos, etiquetas que podrían duplicarse y el plan de QA por sitio.
+
+**Límite de garantía:** el código y sus tests comprueban emisiones esperadas; la configuración de GTM, los eventos recibidos por GA4, las acciones de conversión en Ads y las landings HTML específicas son externos a este repositorio y deben validarse con Preview/DebugView antes de retirar TIBOX Leads.
+
+
+## TIBOX Admin 1.10.3 beta — traspaso de captación sin interrupción
+
+**Prearmado explícito de formularios:** en `TIBOX Admin → Contactos → Captura directa de formularios` ahora puedes marcar «Registrar formularios directamente» aun cuando TIBOX Leads está activo. Esto guarda el ajuste, pero **no ejecuta hooks de captura, no carga el script nativo de conversiones y no duplica registros** mientras se detecte TIBOX Leads.
+
+En un entorno de pruebas y con histórico respaldado:
+1. Con ambos plugins activos, deja preparada la captura nativa de formularios y, por separado, el registro nativo de clics. No se alteran las tablas de TIBOX Leads.
+2. Activa los switches heredados de GTM **solo después de inventariar sus disparadores y definir una única conversión por acción**; pueden quedar sin activar si GTM ya mide con otros eventos.
+3. Desactiva (NO desinstales) el plugin antiguo: TIBOX Admin activará automáticamente capturas preparadas para visitantes. Borrar cachés e ir a una ventana de incógnito para comprobar contactos, referencias y dataLayer.
+4. Si una prueba falla, desactiva las capturas nativas y reactiva el plugin anterior; documenta diferencias antes de hacer cualquier cambio a producción.
+
+**Pruebas:** aserciones PHP y JS del modo prearmado, la exclusión mutua de plugins, la inserción de contactos y la generación opcional de `tbx_generate_lead`.
+
+**Sin garantía automática de paridad:** formularios HTML personalizados y configuración GTM/GA4/Ads requieren inventario y pruebas en el sitio. Ver `docs/matriz-paridad-medicion.md`.
+
+
+## TIBOX Admin 1.10.4 beta — confiabilidad de medición de conversiones
+
+- **Dependencia explícita de jQuery** para los dos scripts que capturan eventos de éxito AJAX de WPForms y Elementor.
+- El evento heredado **`tbx_generate_lead`** admite referencias al formulario desde `event.target`, argumentos adicionales de WPForms o colecciones jQuery. Nunca inventa un ID si no puede resolver el formulario.
+- La deduplicación de este evento utiliza la **misma ventana de 2 segundos que `wpforms_submit`**, por formulario; no impide convertir un segundo formulario con igual ID/nombre ni una nueva consulta real más tarde.
+- **`wpforms_submit` de TIBOX Admin Actividad** conserva su nombre, formato y tipificación comercial. Se evita un segundo evento para callbacks AJAX duplicados.
+- **WPForms no AJAX** conserva la conversión una vez procesado correctamente el formulario por WPForms, aunque falle temporalmente el guardado de la **copia secundaria** en la tabla Contactos. La incidencia de BD permanece registrada por separado.
+- El módulo Contactos **solo marca un envío como duplicado después de insertarlo correctamente**; si falla la BD puede reintentarse en el mismo proceso sin pérdida de contacto por falso duplicado.
+- Cobertura CI ampliada: `tests/native-form-conversions-smoke.cjs`, `tests/tracking-forms-regression.cjs`, `tests/native-form-php-smoke.php`. La instalación y la medición real en Prodata/TIBOX siguen sujetas al checklist de `docs/matriz-paridad-medicion.md`.
+
+**Instalador actualizado:** `v1.10.4-beta.1/tibox-admin-1.10.4-beta.zip` solo para staging. No desactivar el plugin TIBOX Leads antiguo en producción sin QA del histórico, formularios y GTM/GA4/Ads.
+
+
+## TIBOX Admin 1.10.5 beta — Conversiones confirmadas en landings TIBOX
+
+**Problema corregido:** las landings WordPress en modo **HTML completo** no ejecutan `wp_head()` ni `wp_footer()`, por lo que no cargaban los scripts habituales de seguimiento de TIBOX Admin. Algunas usan `fetch` y otras `XMLHttpRequest` para enviar al endpoint propio.
+
+**Solución opt-in:** si activas la **captura nativa de formularios** y la opción **Compatibilidad GTM: tbx_generate_lead** en TIBOX Admin → Contactos, el plugin añade un puente ligero a las landings de HTML completo sin modificar el documento almacenado. En las páginas WordPress/canvas se encola normalmente desde `wp_enqueue_scripts`.
+
+El puente observa exclusivamente las solicitudes **POST, mismo origen, a `/wp-json/tibox/v1/lead`** hechas con fetch o XMLHttpRequest. Emitirá el evento heredado `tbx_generate_lead` (sin datos personales) **solo si la respuesta HTTP es satisfactoria e incluye `success=true`, `lead_created=true` y `lead_id` válido**. Los rechazos 422, errores 500, honeypots y solicitudes a otros destinos no generan conversiones. La misma PK de lead no se contabiliza dos veces. Un mecanismo compartido evita contar dos veces si el HTML también envía `tbx:form-success` después de la respuesta.
+
+La observación no consume ni altera respuestas ni reemplaza los métodos de envío de las landings. **No agrega etiquetas GTM ni GA4**, solo alimenta el dataLayer que tenga configurado el sitio. De forma explícita, no se carga mientras TIBOX Leads esté activo o cuando se desactive la medición o aplique Global Privacy Control.
+
+**Cobertura y límites:** landings del propio endpoint mediante fetch/XHR; no instrumenta automáticamente proveedores de formularios externos ni landings que omitan el endpoint de TIBOX. En modo HTML completo, un CSP que bloquee scripts del propio sitio puede impedir su carga. La conversión real de Google Ads/GA4 requiere revisar GTM Preview/DebugView para una única etiqueta por éxito.
+
+**Tests:** `tests/landing-gtm-bridge-smoke.cjs`, `tests/landing-gtm-xhr-smoke.cjs`, `tests/landing-gtm-shared-smoke.cjs` y `tests/landing-gtm-html-smoke.php`. Validan respuestas exitosas, fallidas, privacidad, duplicados, convivencia con legado y carga independiente en HTML completo.
+
+**Instalador:** `v1.10.5-beta.1/tibox-admin-1.10.5-beta.zip`. Exclusivamente candidato de pruebas para TIBOX y Prodata.

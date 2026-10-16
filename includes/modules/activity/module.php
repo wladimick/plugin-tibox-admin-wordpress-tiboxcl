@@ -116,7 +116,7 @@ final class TBX_Activity
         wp_enqueue_script(
             'tbx-tracking',
             TBX_ADMIN_URL . 'assets/tibox-tracking.js',
-            [],
+            ['jquery'],
             (string) filemtime($file),
             ['in_footer' => true, 'strategy' => 'defer']
         );

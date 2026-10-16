@@ -13,6 +13,8 @@ if (!defined('ABSPATH')) {
 final class TBX_Native_Contacts
 {
     public const OPTION = 'tbx_contacts_native_enabled';
+    public const CLICK_OPTION = 'tbx_contacts_click_tracking_enabled';
+    public const FORM_GTM_OPTION = 'tbx_contacts_form_gtm_compat_enabled';
     private const SEQUENCE_VERSION = '1.0.0';
     private const SEQUENCE_OPTION = 'tbx_native_contact_sequence_version';
     private static array $seen = [];
@@ -24,6 +26,8 @@ final class TBX_Native_Contacts
             'enabled' => '0', 'number' => '', 'label' => 'Cotizar por WhatsApp',
             'message' => 'Hola, estoy viendo {pagina} en su sitio web y me gustaría recibir una cotización.',
             'side' => 'right',
+            'unify' => '0',
+            'gtm_legacy' => '0',
         ];
         return array_merge($defaults, is_array($saved) ? $saved : []);
     }
@@ -71,13 +75,37 @@ final class TBX_Native_Contacts
         $settings['wa_label'] = $wa['label'];
         $settings['wa_side'] = $wa['side'];
         $settings['wa_ref'] = 1; // Ref: XXXXXX sigue viniendo del capturador legado.
+        $settings['unify'] = $wa['unify'] === '1' ? 1 : 0;
         return $settings;
     }
 
     public static function can_capture(): bool
     {
-        // Incluso si se configuró "activo" antes, jamás duplicar el plugin antiguo.
+        // Exclusivamente formularios confirmados; nunca duplicar el plugin antiguo.
         return self::enabled() && !self::legacy_active() && !is_user_logged_in();
+    }
+
+    public static function click_tracking_enabled(): bool
+    {
+        return get_option(self::CLICK_OPTION, '0') === '1';
+    }
+
+    public static function can_capture_clicks(): bool
+    {
+        // Control independiente de formularios. Si hay TIBOX Leads, este captura.
+        return self::click_tracking_enabled() && !self::legacy_active() && !is_user_logged_in();
+    }
+
+    public static function form_gtm_enabled(): bool
+    {
+        return get_option(self::FORM_GTM_OPTION, '0') === '1';
+    }
+
+    public static function can_emit_form_gtm(): bool
+    {
+        // Reutilizar conversiones legadas SOLO si el capturador propio controla
+        // realmente los formularios y el plugin anterior ya no está activo.
+        return self::can_capture() && self::form_gtm_enabled();
     }
 
     public static function init(): void
@@ -90,6 +118,8 @@ final class TBX_Native_Contacts
         add_action('wpcf7_mail_sent', [self::class, 'contact_form_7'], 20, 1);
         add_action('rest_api_init', [self::class, 'register_click_route']);
         add_action('wp_enqueue_scripts', [self::class, 'enqueue_clicks']);
+        add_action('wp_enqueue_scripts', [self::class, 'enqueue_form_gtm'], 15);
+        add_action('wp_enqueue_scripts', [self::class, 'enqueue_landing_gtm_bridge'], 15);
         add_action('wp_enqueue_scripts', [self::class, 'enqueue_wa_button'], 20);
         add_filter('option_tbx_leads_settings', [self::class, 'legacy_whatsapp_frontend'], 20, 1);
     }
@@ -237,23 +267,21 @@ final class TBX_Native_Contacts
         return $out;
     }
 
-    private static function record(string $origin, string $form_id, string $form_name, array $raw): void
+    private static function record(string $origin, string $form_id, string $form_name, array $raw): bool
     {
         if (!self::can_capture()) {
-            return;
+            return false;
         }
         $fields = self::normalize_fields($raw);
         $contact = self::extract_contact($fields);
         if (!$fields || (!array_filter($contact) && !$form_id)) {
-            return;
+            return false;
         }
         $form_id = self::scalar($form_id, 100);
         $idempotency = hash('sha256', wp_json_encode([$origin, $form_id, $fields]));
         if (isset(self::$seen[$idempotency])) {
-            return; // hooks duplicados en la misma solicitud.
+            return false; // hooks duplicados en la misma solicitud.
         }
-        self::$seen[$idempotency] = true;
-
         $data = [
             'type' => 'form',
             'origin' => $origin,
@@ -269,7 +297,11 @@ final class TBX_Native_Contacts
             ...self::attribution(),
             ...TBX_Analytics_Context::classify((string) ($_SERVER['HTTP_USER_AGENT'] ?? '')),
         ];
-        self::insert_native($data);
+        $saved = self::insert_native($data);
+        if ($saved) {
+            self::$seen[$idempotency] = true;
+        }
+        return $saved;
     }
 
     /**
@@ -317,8 +349,25 @@ final class TBX_Native_Contacts
                 't' => $f['type'] ?? '',
             ];
         }
-        self::record('wpforms', self::scalar($form_data['id'] ?? '', 100),
+        $form_id = self::scalar($form_data['id'] ?? '', 100);
+        // WPForms ejecuta este hook tras confirmar el envío. La conversión
+        // comercial NO debe perderse si falla nuestra tabla secundaria de
+        // Contactos: registrar el contacto y medir éxito son independientes.
+        self::record('wpforms', $form_id,
             self::scalar($form_data['settings']['form_title'] ?? '', 190), $raw);
+        if (self::can_emit_form_gtm() && $form_id !== '' &&
+            !wp_doing_ajax() && !(defined('REST_REQUEST') && REST_REQUEST) &&
+            !headers_sent()) {
+            // El antiguo plugin marcaba los WPForms sin AJAX con un cookie
+            // transitorio de ID: mantener la misma garantía sin dato personal.
+            setcookie('tbx_admin_form_gtm', rawurlencode($form_id), [
+                'expires' => time() + 120,
+                'path' => '/',
+                'secure' => is_ssl(),
+                'httponly' => false,
+                'samesite' => 'Lax',
+            ]);
+        }
     }
 
     public static function elementor($record, $handler = null): void
@@ -371,9 +420,70 @@ final class TBX_Native_Contacts
             method_exists($contact_form, 'title') ? (string) $contact_form->title() : '', $raw);
     }
 
+    /**
+     * Compatibilidad con el evento GTM tbx_generate_lead de TIBOX Leads.
+     * Es distinta de la captura de datos, queda apagada por defecto y nunca
+     * carga mientras el antiguo plugin esté activo.
+     */
+    /**
+     * Una landing con HTML completo no ejecuta wp_head/wp_footer; permite
+     * incluir únicamente el puente de conversiones cuando el admin optó
+     * expresamente por el modo compatible y el plugin legado ya está inactivo.
+     */
+    public static function full_html_form_gtm_snippet(): string
+    {
+        if (!self::can_emit_form_gtm()) {
+            return '';
+        }
+        $url = add_query_arg('ver', TBX_ADMIN_VERSION,
+            TBX_ADMIN_URL . 'assets/tibox-landing-lead-bridge.js');
+        return '<script id="tbx-landing-gtm-config">window.TBX_LANDING_GTM_COMPAT={"enabled":true};</script>' .
+            '<script id="tbx-landing-lead-bridge" src="' . esc_url($url) . '" defer></script>';
+    }
+
+    public static function enqueue_landing_gtm_bridge(): void
+    {
+        if (!self::can_emit_form_gtm()) {
+            return;
+        }
+        $file = TBX_ADMIN_DIR . 'assets/tibox-landing-lead-bridge.js';
+        wp_enqueue_script(
+            'tbx-landing-lead-gtm-compat',
+            TBX_ADMIN_URL . 'assets/tibox-landing-lead-bridge.js',
+            [],
+            (string) filemtime($file),
+            ['in_footer' => true, 'strategy' => 'defer']
+        );
+        wp_add_inline_script(
+            'tbx-landing-lead-gtm-compat',
+            'window.TBX_LANDING_GTM_COMPAT=' . wp_json_encode(['enabled' => true]) . ';',
+            'before'
+        );
+    }
+
+    public static function enqueue_form_gtm(): void
+    {
+        if (!self::can_emit_form_gtm()) {
+            return;
+        }
+        $file = TBX_ADMIN_DIR . 'assets/tibox-form-conversions.js';
+        wp_enqueue_script(
+            'tbx-native-form-gtm-compat',
+            TBX_ADMIN_URL . 'assets/tibox-form-conversions.js',
+            ['jquery'],
+            (string) filemtime($file),
+            ['in_footer' => true, 'strategy' => 'defer']
+        );
+        wp_add_inline_script(
+            'tbx-native-form-gtm-compat',
+            'window.TBX_FORM_GTM_COMPAT=' . wp_json_encode(['enabled' => true]) . ';',
+            'before'
+        );
+    }
+
     public static function enqueue_clicks(): void
     {
-        if (!self::can_capture()) {
+        if (!self::can_capture_clicks()) {
             return;
         }
         $file = TBX_ADMIN_DIR . 'assets/tibox-contact-clicks.js';
@@ -385,9 +495,17 @@ final class TBX_Native_Contacts
             ['in_footer' => true, 'strategy' => 'defer']
         );
 
+        $wa = self::whatsapp_settings();
         wp_add_inline_script(
             'tbx-native-contact-clicks',
-            'window.TBX_CONTACT_ENDPOINT=' . wp_json_encode(esc_url_raw(rest_url('tibox/v1/contact-event'))) . ';',
+            'window.TBX_CONTACT_ENDPOINT=' . wp_json_encode(esc_url_raw(rest_url('tibox/v1/contact-event'))) .
+            ';window.TBX_CONTACT_LINK_CONFIG=' . wp_json_encode([
+                'unify' => $wa['unify'] === '1',
+                'number' => $wa['number'],
+                'message' => $wa['message'],
+                'site' => get_bloginfo('name'),
+                'gtm_legacy' => ($wa['gtm_legacy'] ?? '0') === '1',
+            ]) . ';',
             'before'
         );
     }
@@ -439,7 +557,7 @@ final class TBX_Native_Contacts
 
     public static function receive_click(WP_REST_Request $request): WP_REST_Response
     {
-        if (!self::can_capture()) {
+        if (!self::can_capture_clicks()) {
             return new WP_REST_Response(['ok' => false], 403);
         }
         $origin = $request->get_header('origin') ?: $request->get_header('referer');
@@ -493,9 +611,11 @@ final class TBX_Native_Contacts
             $candidate = self::scalar($candidate, 100);
             $attrs[$key] = preg_match('/@|https?:|%40/i', $candidate) ? '' : $candidate;
         }
+        $raw_origin = isset($body['origin']) && is_string($body['origin'])
+            ? sanitize_key($body['origin']) : '';
         $data = [
             'type' => $type,
-            'origin' => 'enlace',
+            'origin' => $raw_origin === 'boton-tibox' ? 'boton-tibox' : 'enlace',
             'location' => sanitize_key(self::scalar($body['location'] ?? '', 40)),
             'button_text' => self::scalar($body['button_text'] ?? '', 100),
             'destination' => $dest,
@@ -522,12 +642,15 @@ final class TBX_Native_Contacts
         $valid = (bool) preg_match('/^[0-9]{8,15}$/', $number);
         $config = [
             'enabled' => !empty($in['enabled']) && $valid ? '1' : '0',
+            'unify' => !empty($in['unify']) && $valid ? '1' : '0',
+            'gtm_legacy' => !empty($in['gtm_legacy']) ? '1' : '0',
             'number' => $valid ? $number : '',
             'label' => self::scalar($in['label'] ?? 'Cotizar por WhatsApp', 80),
             'message' => mb_substr(sanitize_textarea_field((string) ($in['message'] ?? '')), 0, 300),
             'side' => ($in['side'] ?? '') === 'left' ? 'left' : 'right',
         ];
         update_option(self::WA_OPTION, $config, false);
+        update_option(self::CLICK_OPTION, !empty($in['track_clicks']) ? '1' : '0', false);
         wp_safe_redirect(add_query_arg('wa_saved', $valid ? '1' : '0', TBX_Admin::tab_url('contactos')));
         exit;
     }
@@ -539,8 +662,10 @@ final class TBX_Native_Contacts
         echo '<p>Este botón funciona independientemente de la captura directa de formularios. Puedes activarlo mientras TIBOX Leads sigue instalado: TIBOX Admin muestra un solo botón y TIBOX Leads conserva el registro de clics y las referencias WhatsApp.</p>';
         if (self::legacy_active()) {
             echo '<p class="tbx-muted"><strong>Convivencia:</strong> los ajustes del botón se administran aquí; el registro de clics sigue funcionando en el plugin antiguo hasta que migremos completamente la captura.</p>';
-        } elseif (!self::can_capture()) {
-            echo '<p class="tbx-muted"><strong>Atención:</strong> el botón puede abrir WhatsApp, pero sus clics no quedarán registrados individualmente mientras la captura nativa esté desactivada y no exista el plugin antiguo.</p>';
+        } elseif (!self::click_tracking_enabled()) {
+            echo '<p class="tbx-muted"><strong>Atención:</strong> el botón abre WhatsApp, pero el registro individual de clics está desactivado. Puedes habilitarlo aquí sin activar la captura de formularios.</p>';
+        } else {
+            echo '<p class="tbx-muted"><strong>Seguimiento preparado:</strong> se registran los clics de visitantes. Los administradores con sesión iniciada no se contabilizan; prueba desde una ventana privada sin iniciar sesión.</p>';
         }
         if (isset($_GET['wa_saved'])) {
             $ok = sanitize_key(wp_unslash($_GET['wa_saved'])) === '1';
@@ -553,13 +678,27 @@ final class TBX_Native_Contacts
         wp_nonce_field('tbx_contacts_wa_settings');
         echo '<p><label><input type="checkbox" name="tbx_wa[enabled]" value="1"' .
             checked($wa['enabled'], '1', false) . '> Mostrar botón flotante</label></p>';
+        echo '<p><label><input type="checkbox" name="tbx_wa[track_clicks]" value="1"' .
+            checked(self::click_tracking_enabled(), true, false) .
+            '> Registrar clics de WhatsApp, teléfono y correo en Contactos (independiente de los formularios)</label></p>';
+        if (self::legacy_active()) {
+            echo '<p class="tbx-muted">Puedes dejar preparado el seguimiento nuevo, pero no se activará mientras TIBOX Leads esté instalado y activo. Este seguirá registrando los clics sin duplicados.</p>';
+        }
         echo '<p><label>Número (con código de país, solo dígitos)<br><input class="regular-text" type="text" name="tbx_wa[number]" value="' .
             esc_attr((string) $wa['number']) . '" placeholder="56912345678"></label></p>';
         echo '<p><label>Etiqueta<br><input class="regular-text" type="text" name="tbx_wa[label]" value="' .
             esc_attr((string) $wa['label']) . '"></label></p>';
         echo '<p><label>Mensaje predeterminado<br><textarea class="large-text" rows="3" name="tbx_wa[message]">' .
             esc_textarea((string) $wa['message']) . '</textarea></label></p>';
-        echo '<p class="tbx-muted">Variables permitidas: {pagina} y {sitio}. Las referencias se agregan cuando hay un capturador de clics activo.</p>';
+        echo '<p class="tbx-muted">Variables permitidas: {pagina} y {sitio}. Las referencias de seis caracteres se agregan a enlaces WhatsApp compatibles cuando hay un capturador activo.</p>';
+        echo '<p><label><input type="checkbox" name="tbx_wa[unify]" value="1"' .
+            checked((string) $wa['unify'], '1', false) .
+            '> Unificar otros enlaces de WhatsApp con este número y mensaje</label></p>';
+        echo '<p class="tbx-muted">Opcional: redirige enlaces WhatsApp reconocidos al destino configurado. Dejar desactivado si hay números distintos en el sitio.</p>';
+        echo '<p><label><input type="checkbox" name="tbx_wa[gtm_legacy]" value="1"' .
+            checked((string) ($wa['gtm_legacy'] ?? '0'), '1', false) .
+            '> Compatibilidad Google Tag Manager: emitir eventos tbx_whatsapp_click, tbx_phone_click y tbx_email_click</label></p>';
+        echo '<p class="tbx-muted">Solo después de retirar TIBOX Leads y revisar disparadores de GTM. Desactivado por defecto para no duplicar conversiones. Los eventos indican clics, no consultas confirmadas.</p>';
         echo '<p><label>Ubicación <select name="tbx_wa[side]">';
         foreach (['right' => 'Derecha', 'left' => 'Izquierda'] as $v => $label) {
             echo '<option value="' . esc_attr($v) . '"' . selected($wa['side'], $v, false) . '>' . esc_html($label) . '</option>';
@@ -579,12 +718,11 @@ final class TBX_Native_Contacts
         }
         check_admin_referer('tbx_contacts_native_settings');
         $enable = !empty($_POST['native_enabled']);
-        if ($enable && self::legacy_active()) {
-            update_option(self::OPTION, '0', false);
-            wp_safe_redirect(add_query_arg('native', 'legacy_active', TBX_Admin::tab_url('contactos')));
-            exit;
-        }
+        // Es seguro preparar la captura con TIBOX Leads activo: can_capture()
+        // exige que el legado ya no esté cargado y bloquea tanto hooks como JS.
+        // Esto evita un intervalo sin registros durante un corte controlado.
         update_option(self::OPTION, $enable ? '1' : '0', false);
+        update_option(self::FORM_GTM_OPTION, !empty($_POST['form_gtm_compat']) ? '1' : '0', false);
         wp_safe_redirect(add_query_arg('native', 'saved', TBX_Admin::tab_url('contactos')));
         exit;
     }
@@ -592,9 +730,9 @@ final class TBX_Native_Contacts
     public static function render_settings(): void
     {
         echo '<div class="tbx-import-card"><h2>Captura directa de formularios</h2>';
-        echo '<p>Registra envíos confirmados de WPForms, Elementor y Contact Form 7, además de clics individuales en WhatsApp, teléfono y correo, sin agregar conversiones duplicadas a GTM.</p>';
+        echo '<p>Registra envíos confirmados de WPForms, Elementor y Contact Form 7. El seguimiento de WhatsApp, teléfono y correo se configura por separado en «Botón flotante de WhatsApp».</p>';
         if (self::legacy_active()) {
-            echo '<div class="notice notice-warning inline"><p>El plugin original TIBOX Leads sigue activo: la captura directa está bloqueada para evitar duplicados. Mantén este plugin antiguo durante la importación del historial.</p></div>';
+            echo '<div class="notice notice-warning inline"><p>TIBOX Leads sigue activo: conservará en exclusiva el registro de formularios. Puedes dejar preparada la captura nativa, pero <strong>NO comenzará a registrar</strong> hasta desactivar el antiguo plugin. Hazlo solo después de respaldar y en una ventana de pruebas; al desactivarlo, TIBOX Admin tomará el control automáticamente.</p></div>';
         }
         if (isset($_GET['native']) && sanitize_key(wp_unslash($_GET['native'])) === 'saved') {
             echo '<div class="notice notice-success inline"><p>Configuración guardada.</p></div>';
@@ -603,12 +741,16 @@ final class TBX_Native_Contacts
         echo '<input type="hidden" name="action" value="tbx_contacts_native_settings">';
         wp_nonce_field('tbx_contacts_native_settings');
         echo '<label><input type="checkbox" name="native_enabled" value="1"' .
-            checked(self::enabled(), true, false) . (self::legacy_active() ? ' disabled' : '') .
-            '> Registrar formularios y clics de contacto directamente desde TIBOX Admin</label>';
-        if (self::legacy_active()) {
-            echo '<input type="hidden" name="native_enabled" value="0">';
-        }
-        echo '<p class="tbx-muted">Desactivada por defecto. Primero importa y comprueba el historial, realiza un respaldo y desactiva TIBOX Leads; después habilita esta opción y prueba un formulario de cada tipo. No requiere mantener el plugin anterior.</p>';
+            checked(self::enabled(), true, false) .
+            '> Registrar formularios directamente desde TIBOX Admin' .
+            (self::legacy_active() ? ' (preparar para activar al retirar TIBOX Leads)' : '') .
+            '</label>';
+        echo '<p><label><input type="checkbox" name="form_gtm_compat" value="1"' .
+            checked(self::form_gtm_enabled(), true, false) .
+            '> Compatibilidad GTM: emitir tbx_generate_lead SOLO tras confirmar envíos de formularios</label></p>';
+        echo '<p class="tbx-muted">Opcional y desactivado por defecto. Durante la convivencia con TIBOX Leads no emite eventos nuevos. Revisar en GTM si ya existen triggers para wpforms_submit, form_submit, generate_lead o submit_lead_form; NO deben marcarse dos conversiones por un mismo envío.</p>';
+        echo '<p class="tbx-muted">También identifica el éxito real de landings que envíen solicitudes al endpoint propio /wp-json/tibox/v1/lead, incluso si se muestran como HTML completo sin wp_head/wp_footer. Exige confirmación del servidor lead_created=true y un lead_id guardado. No mide formularios HTML de otros sistemas automáticamente.</p>';
+        echo '<p class="tbx-muted">Desactivada por defecto. Primero importa y comprueba el histórico y realiza un respaldo. Para un cambio sin interrupción puedes preparar la casilla mientras el legado siga activo: TIBOX Admin NO captura hasta que el legado se desactive. Comprueba todos los formularios tras el corte y mantén disponible el rollback.</p>';
         submit_button('Guardar configuración', 'secondary', 'submit', false);
         echo '</form></div>';
     }
