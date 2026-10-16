@@ -70,7 +70,7 @@
       var u = new URL(a.href, location.href);
       if (!['https:', 'http:', 'whatsapp:'].includes(u.protocol)) return '';
       var number = numberOf(a.href);
-      if (!number && CONFIG.unify && /^[0-9]{8,15}$/.test(digits(CONFIG.number))) {
+      if (CONFIG.unify && /^[0-9]{8,15}$/.test(digits(CONFIG.number))) {
         number = digits(CONFIG.number);
         u = new URL('https://wa.me/' + number);
         u.searchParams.set('text', messageTemplate());
