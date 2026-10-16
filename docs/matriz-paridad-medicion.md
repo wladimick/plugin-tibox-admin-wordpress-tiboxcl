@@ -1,10 +1,10 @@
 # Matriz de paridad de medición TIBOX Leads → TIBOX Admin
 
-Base auditada: fuente original **TIBOX Leads 1.0.0** (tibox-leads.php + assets/tbx-leads.js), rama del plugin **TIBOX Admin 1.10.3 beta**, más assets/tibox-tracking.js y su módulo Actividad. Esta matriz describe emisiones de código, **no prueba que Google Tag Manager/GA4/Ads reciban o contabilicen cada evento**.
+Base auditada: fuente original **TIBOX Leads 1.0.0** (tibox-leads.php + assets/tbx-leads.js), rama del plugin **TIBOX Admin 1.10.4 beta**, más assets/tibox-tracking.js y su módulo Actividad. Esta matriz describe emisiones de código, **no prueba que Google Tag Manager/GA4/Ads reciban o contabilicen cada evento**.
 
 ## Eventos conocidos
 
-| Fuente / interacción | TIBOX Leads 1.0.0 | TIBOX Admin 1.10.3 | Condición de paridad / riesgo |
+| Fuente / interacción | TIBOX Leads 1.0.0 | TIBOX Admin 1.10.4 | Condición de paridad / riesgo |
 | --- | --- | --- | --- |
 | Click WhatsApp | `tbx_whatsapp_click` `{ubicacion,texto_boton,tbx_ref}` | Compatibilidad opt-in del botón y enlaces `tbx_whatsapp_click`; registro en Contactos `type=whatsapp` | Evento indica clic; referencia solo si el texto llegó a URL; sin unificación obligatoria |
 | Click teléfono | `tbx_phone_click` `{ubicacion,texto_boton}` | Mismo evento opt-in; Contactos `type=phone` | No es una llamada contestada |
@@ -69,6 +69,17 @@ Esto emite el evento GTM de compatibilidad si la opción está activa, pero **NO
 **Estado:** matriz técnica y código preparados; falta inspección de GTM real, aceptación funcional y prueba de producción. No se garantiza paridad real solo con GitHub Actions.
 
 
-### Prearmado y continuidad de medición (1.10.3 beta)
+### Prearmado y continuidad de medición (1.10.4 beta)
 
 La opción `tbx_contacts_native_enabled` puede guardarse como `1` mientras TIBOX Leads sigue activo. Aun así `can_capture()` retorna false cuando detecta `tbx_leads_insert`, y no se registran formularios ni se encola el JS de compatibilidad GTM. Al desactivar el antiguo, la nueva captura ya preparada comienza a operar sin esperar una configuración posterior. Es un cambio **explícito y reversible** para staging, no una autorización a cambiar la instalación real.
+
+
+## Validaciones adicionales — 1.10.4 beta
+
+- **Dependencia de jQuery:** declarada expresamente en los dos módulos que oyen los eventos AJAX de WPForms/Elementor; no dependemos de que otro tema/plugin lo cargue antes.
+- **Evento nativo `wpforms_submit`:** conserva nombre y parámetros habituales de TIBOX Admin, pero evita un segundo `wpforms_submit` por el mismo callback exitoso duplicado. Resuelve referencias al formulario desde event.target o argumentos adicionales, sin atribuir el envío a un formulario inventado.
+- **Evento heredado `tbx_generate_lead`:** reconoce un elemento de formulario jQuery cuando WPForms lo entrega en argumentos extras y un `event.target` asociado al documento. La deduplicación es de dos segundos por elemento para no perder una segunda consulta legítima, incluso cuando dos formularios comparten etiquetas.
+- **WPForms sin AJAX:** el hook oficial `wpforms_process_complete` se ejecuta tras un procesamiento correcto de WPForms; la compatibilidad de conversión no se pierde si falla la inserción secundaria en Contactos. El fallo de almacenamiento se registra como incidencia separada.
+- **Persistencia de Contactos:** una inserción fallida puede reintentarse en la misma solicitud porque no se marca como duplicado antes del guardado exitoso.
+- **QA automatizada:** pruebas de callback documento/formulario, evento sin formulario identificable, segundo envío después de dos segundos, duplicados, fallo temporal de BD, WPForms Lite/no AJAX y exclusión mutua con TIBOX Leads.
+- **No equivale a GTM validado:** siguen pendientes los contenedores publicados, DebugView y la comprobación de acciones de Ads en cada sitio.
