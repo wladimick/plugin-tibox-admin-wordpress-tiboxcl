@@ -20,9 +20,9 @@ function create(enabled = true, options = {}) {
   };
   const navigator = {globalPrivacyControl: Boolean(options.gpc)};
   vm.runInNewContext(script, {window, navigator, document, Date, decodeURIComponent});
-  function fire(kind, data) {
+  function fire(kind, data, ...extra) {
     const handlers = kind.startsWith('jquery:') ? jq[kind.slice(7)] : dom[kind];
-    for (const handler of handlers || []) handler(data);
+    for (const handler of handlers || []) handler(data, ...extra);
   }
   return {fire, pushed, document, jq, dom, window};
 }
@@ -74,26 +74,39 @@ assert.equal(s.pushed.length, 1, 'Duplicate AJAX success must not convert again'
 s.fire('submit', evt(wp));
 assert.equal(s.pushed.length, 1, 'Plain submit is not confirmed success');
 
+// WPForms puede entregar el formulario como argumento extra, mientras que
+// event.target es document. No atribuir la conversión al documento.
+s.fire('jquery:wpformsAjaxSubmitSuccess', {target: s.document}, {success: true},
+  {jquery: true, 0: wp});
+assert.equal(s.pushed.length, 1, 'Duplicate document-target callback must not convert twice');
+const anotherWP = form('wpforms','831','Otra instancia');
+anotherWP.getAttribute = wp.getAttribute;
+s.fire('jquery:wpformsAjaxSubmitSuccess', {target:s.document}, {form:anotherWP});
+assert.equal(s.pushed.length, 2, 'Another form can convert even with the same form metadata');
+// Una señal sin formulario reconocible se ignora en vez de inventar form_id.
+s.fire('jquery:wpformsAjaxSubmitSuccess',{target:s.document},{success:true});
+assert.equal(s.pushed.length,2,'Unknown WPForms form must not invent a conversion');
+
 const el = form('elementor', 'contacto-prodata', 'Formulario sitio');
 s.fire('jquery:submit_success', evt(el));
-assert.equal(s.pushed.length, 2);
-assert.equal(s.pushed[1].origen_formulario, 'elementor');
-assert.equal(s.pushed[1].form_id, 'contacto-prodata');
+assert.equal(s.pushed.length, 3);
+assert.equal(s.pushed[2].origen_formulario, 'elementor');
+assert.equal(s.pushed[2].form_id, 'contacto-prodata');
 s.fire('jquery:submit_success', evt(el));
-assert.equal(s.pushed.length, 2, 'Elementor success double hook must be deduped');
+assert.equal(s.pushed.length, 3, 'Elementor success double hook must be deduped');
 
 const cf = form('cf7','106','Contacta');
 s.fire('wpcf7mailsent', evt(cf,{contactFormId: '106'}));
-assert.equal(s.pushed.length,3);
-assert.equal(s.pushed[2].origen_formulario,'cf7');
-assert.equal(s.pushed[2].form_id,'106');
+assert.equal(s.pushed.length,4);
+assert.equal(s.pushed[3].origen_formulario,'cf7');
+assert.equal(s.pushed[3].form_id,'106');
 
 const html = form('html','cotiza-html','Contacto personalizado');
 s.fire('tbx:form-success',evt(html,{form:html,formId:'cotiza-html',formName:'Contacto personalizado'}));
-assert.equal(s.pushed.length,4);
-assert.equal(s.pushed[3].origen_formulario,'html');
+assert.equal(s.pushed.length,5);
+assert.equal(s.pushed[4].origen_formulario,'html');
 s.fire('tbx:form-success',evt(html,{form:html,formId:'cotiza-html'}));
-assert.equal(s.pushed.length,4, 'One successful HTML submit = one conversion');
+assert.equal(s.pushed.length,5, 'One successful HTML submit = one conversion');
 
 s = create(false);
 s.fire('jquery:wpformsAjaxSubmitSuccess',evt(wp));
