@@ -83,3 +83,16 @@ La opción `tbx_contacts_native_enabled` puede guardarse como `1` mientras TIBOX
 - **Persistencia de Contactos:** una inserción fallida puede reintentarse en la misma solicitud porque no se marca como duplicado antes del guardado exitoso.
 - **QA automatizada:** pruebas de callback documento/formulario, evento sin formulario identificable, segundo envío después de dos segundos, duplicados, fallo temporal de BD, WPForms Lite/no AJAX y exclusión mutua con TIBOX Leads.
 - **No equivale a GTM validado:** siguen pendientes los contenedores publicados, DebugView y la comprobación de acciones de Ads en cada sitio.
+
+
+## Paridad ampliada de landings — TIBOX Admin 1.10.5 beta
+
+| Tipo de landing | Evento conservado / nuevo | Condición |
+| --- | --- | --- |
+| WordPress / Elementor | Los eventos existentes de TIBOX Admin permanecen sin cambio | No activar simultáneamente dos disparadores GTM de conversión |
+| Canvas TIBOX que usa `/wp-json/tibox/v1/lead` | `tbx_generate_lead` heredado, opt-in | POST mismo origen, respuesta HTTP exitosa, `success=true`, `lead_created=true`, `lead_id>0`; compatible con fetch y XHR |
+| HTML completo de TIBOX (sin wp_head/wp_footer) | `tbx_generate_lead` vía script opt-in insertado en HTML renderizado | Sin modificar los metadatos de la landing; desactivado si TIBOX Leads sigue activo o si usuario está autenticado |
+| HTML con evento `tbx:form-success` y mismo POST nativo | Un único `tbx_generate_lead` para el mismo formulario en una ventana de 2 s | Dedupe cruzada; requiere probar mensajes sucesivos reales si se envían con rapidez |
+| Otros sistemas externos / landings sin endpoint TIBOX | **Sin cobertura automática** | Requieren inventario e integración explícita de éxito comprobado |
+
+Precaución: el puente es **local** y no comprueba qué versión de GTM/GA4/Ads está realmente publicada. Los eventos del nuevo puente y los `form_submit` ya existentes deben revisarse en Preview antes de marcarlos como conversiones. Un clic WhatsApp no es por sí mismo un mensaje recibido.

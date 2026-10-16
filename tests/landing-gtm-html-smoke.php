@@ -5,7 +5,7 @@
  */
 define('ABSPATH', __DIR__ . '/');
 define('TBX_ADMIN_URL', 'https://tibox.cl/wp-content/plugins/tibox-admin/');
-define('TBX_ADMIN_VERSION', '1.10.4');
+define('TBX_ADMIN_VERSION', '1.10.5');
 $GLOBALS['options'] = [
     'tbx_contacts_native_enabled' => '1',
     'tbx_contacts_form_gtm_compat_enabled' => '1',

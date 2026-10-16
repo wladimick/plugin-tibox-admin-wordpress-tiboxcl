@@ -357,3 +357,20 @@ En un entorno de pruebas y con histórico respaldado:
 - Cobertura CI ampliada: `tests/native-form-conversions-smoke.cjs`, `tests/tracking-forms-regression.cjs`, `tests/native-form-php-smoke.php`. La instalación y la medición real en Prodata/TIBOX siguen sujetas al checklist de `docs/matriz-paridad-medicion.md`.
 
 **Instalador actualizado:** `v1.10.4-beta.1/tibox-admin-1.10.4-beta.zip` solo para staging. No desactivar el plugin TIBOX Leads antiguo en producción sin QA del histórico, formularios y GTM/GA4/Ads.
+
+
+## TIBOX Admin 1.10.5 beta — Conversiones confirmadas en landings TIBOX
+
+**Problema corregido:** las landings WordPress en modo **HTML completo** no ejecutan `wp_head()` ni `wp_footer()`, por lo que no cargaban los scripts habituales de seguimiento de TIBOX Admin. Algunas usan `fetch` y otras `XMLHttpRequest` para enviar al endpoint propio.
+
+**Solución opt-in:** si activas la **captura nativa de formularios** y la opción **Compatibilidad GTM: tbx_generate_lead** en TIBOX Admin → Contactos, el plugin añade un puente ligero a las landings de HTML completo sin modificar el documento almacenado. En las páginas WordPress/canvas se encola normalmente desde `wp_enqueue_scripts`.
+
+El puente observa exclusivamente las solicitudes **POST, mismo origen, a `/wp-json/tibox/v1/lead`** hechas con fetch o XMLHttpRequest. Emitirá el evento heredado `tbx_generate_lead` (sin datos personales) **solo si la respuesta HTTP es satisfactoria e incluye `success=true`, `lead_created=true` y `lead_id` válido**. Los rechazos 422, errores 500, honeypots y solicitudes a otros destinos no generan conversiones. La misma PK de lead no se contabiliza dos veces. Un mecanismo compartido evita contar dos veces si el HTML también envía `tbx:form-success` después de la respuesta.
+
+La observación no consume ni altera respuestas ni reemplaza los métodos de envío de las landings. **No agrega etiquetas GTM ni GA4**, solo alimenta el dataLayer que tenga configurado el sitio. De forma explícita, no se carga mientras TIBOX Leads esté activo o cuando se desactive la medición o aplique Global Privacy Control.
+
+**Cobertura y límites:** landings del propio endpoint mediante fetch/XHR; no instrumenta automáticamente proveedores de formularios externos ni landings que omitan el endpoint de TIBOX. En modo HTML completo, un CSP que bloquee scripts del propio sitio puede impedir su carga. La conversión real de Google Ads/GA4 requiere revisar GTM Preview/DebugView para una única etiqueta por éxito.
+
+**Tests:** `tests/landing-gtm-bridge-smoke.cjs`, `tests/landing-gtm-xhr-smoke.cjs`, `tests/landing-gtm-shared-smoke.cjs` y `tests/landing-gtm-html-smoke.php`. Validan respuestas exitosas, fallidas, privacidad, duplicados, convivencia con legado y carga independiente en HTML completo.
+
+**Instalador:** `v1.10.5-beta.1/tibox-admin-1.10.5-beta.zip`. Exclusivamente candidato de pruebas para TIBOX y Prodata.
