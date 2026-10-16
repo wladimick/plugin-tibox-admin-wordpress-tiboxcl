@@ -52,11 +52,17 @@
     // La PK guardada en BD es la fuente de verdad: no contar el mismo lead dos veces.
     if (seenLeadIds.has(id)) return;
     seenLeadIds.add(id);
+    var formId = requestId || 'tibox-lead-form';
+    // Compartir deduplicación con tbx:form-success de landings HTML.
+    var recent = window.__tbxRecentHtmlGtm || (window.__tbxRecentHtmlGtm = Object.create(null));
+    var now = Date.now();
+    if (now - (recent[formId] || 0) < 2000) return;
+    recent[formId] = now;
     if (seenLeadIds.size > 200) seenLeadIds.clear();
     window.dataLayer = window.dataLayer || [];
     window.dataLayer.push({
       event: 'tbx_generate_lead',
-      form_id: requestId || 'tibox-lead-form',
+      form_id: formId,
       form_name: 'Landing TIBOX',
       origen_formulario: 'html'
     });
