@@ -252,3 +252,34 @@ La versión 1.9 no fusiona físicamente ni elimina tablas origen, y no envía co
 - Las opciones del botón y las estadísticas siguen en tablas/opciones separadas. Verificar en Prodata tras actualizar y limpiar caché de página/CDN/minificación.
 
 Se agregan pruebas PHP de independencia y convivencia más pruebas JS de botón mostrado aun con seguimiento desactivado. **No se han ejecutado pruebas de navegador sobre el WordPress de Prodata en producción.**
+
+ 
+## TIBOX Admin 1.10.0 beta — WhatsApp nativo y transición desde TIBOX Leads
+
+La captura de **clics WhatsApp/teléfono/correo** ahora es **independiente** de **Captura directa de formularios**.
+
+### Controles en TIBOX Admin → Contactos
+Dentro de **Importaciones y configuración de capturas → Botón flotante de WhatsApp**:
+- **Mostrar botón flotante:** controla el botón visible, mensaje, número y posición. No implica activar analítica ni capturar formularios.
+- **Registrar clics de WhatsApp, teléfono y correo en Contactos:** guarda eventos individuales nativos desde el endpoint `/wp-json/tibox/v1/contact-event`, incluso con Captura directa de formularios apagada; esta configuración es opcional y desactivada por defecto.
+- **Unificar otros enlaces WhatsApp con el número y mensaje configurados:** opción voluntaria para sitios que deben utilizar un solo número. Desactivada por defecto para no alterar números diferentes.
+- La opción nueva puede prepararse mientras el plugin antiguo siga activo, pero **no recopila eventos nativamente hasta desactivar TIBOX Leads**. Durante convivencia, TIBOX Leads continúa registrando y sincronizando los clics.
+- El botón propio de TIBOX Admin se muestra con su código independiente. El botón antiguo se oculta **solo en el frontend** mientras el nuevo esté habilitado; no se modifica la configuración histórica del plugin antiguo.
+
+### Equivalencia de tracking WhatsApp
+- Reconoce `wa.me`, `wa.link`, enlaces `api.whatsapp.com`, `web.whatsapp.com`, `chat.whatsapp.com`, esquemas `whatsapp:` y algunos widgets clásicos.
+- Genera una referencia de seis caracteres con `crypto.getRandomValues` y la agrega al mensaje solo si el enlace admite edición y contiene un número válido, o si está habilitada la unificación al número configurado. **No crea referencias que el cliente no verá** (enlaces cortos y widgets no editables se guardan sin referencia).
+- Registra fecha, página, dispositivo, navegador, SO, posición y nombre del enlace; también fuente, medio y campaña UTM cuando están disponibles en URL o sesión del módulo Actividad. Sin cookie persistente, IP, User-Agent completo ni identificador estable de visitante.
+- El registro nativo se envía solo a Contactos y **no crea eventos nuevos en GTM**. Los clics son intenciones de contacto, no mensajes confirmados ni ventas.
+
+### Secuencia segura para Prodata
+1. **No desactivar el plugin antiguo inmediatamente.** Hacer backup de BD y archivos.
+2. Confirmar que todos los registros históricos de TIBOX Leads se importaron a Contactos y que las últimas referencias WhatsApp aparecen en ambos paneles.
+3. Instalar 1.10.0 **en staging** y preparar botón y seguimiento nativo en Contactos. Mientras TIBOX Leads siga activo, solo él registra clics y formularios.
+4. Realizar una prueba controlada en staging: desactivar (no borrar) TIBOX Leads, conservar su tabla; dejar **Registrar clics** activo. Probar WhatsApp flotante y enlaces de cada tipo, que se agregue la referencia visible en el mensaje y exista **un único registro en Contactos**; probar teléfono y correo.
+5. Si se pretende retirar TIBOX Leads por completo, habilitar también **Captura directa de formularios** después de desactivar el antiguo y comprobar WPForms, Elementor y CF7. Revisar formularios HTML personalizados y scripts manuales `window.tbxLeads.lead()`: todavía no hay paridad garantizada con ese mecanismo del legado. Hacer un inventario y migrarlos si se usan.
+6. Comprobar GTM/GA4, consentimientos, mobile/desktop y rendimiento. Solo después programar el corte real en Prodata y TIBOX.
+7. Rollback: apagar Registro de clics y Captura nativa, reactivar TIBOX Leads, verificar registros y botón. **No desinstalar** el antiguo hasta finalizar la homologación.
+
+### Limitaciones
+No se ha probado el flujo real del WhatsApp de Prodata en un navegador conectado a la producción. Los enlaces de widgets no editables pueden registrar el clic sin una referencia; los acortadores `wa.link` tampoco garantizan el mensaje con referencia. La atribución del visitante no reproduce automáticamente la cookie persistente del plugin antiguo. Cumplimiento de consentimiento debe revisarse con el CMP real del sitio.
