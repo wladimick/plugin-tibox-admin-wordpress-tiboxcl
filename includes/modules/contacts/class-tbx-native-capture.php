@@ -119,6 +119,7 @@ final class TBX_Native_Contacts
         add_action('rest_api_init', [self::class, 'register_click_route']);
         add_action('wp_enqueue_scripts', [self::class, 'enqueue_clicks']);
         add_action('wp_enqueue_scripts', [self::class, 'enqueue_form_gtm'], 15);
+        add_action('wp_enqueue_scripts', [self::class, 'enqueue_landing_gtm_bridge'], 15);
         add_action('wp_enqueue_scripts', [self::class, 'enqueue_wa_button'], 20);
         add_filter('option_tbx_leads_settings', [self::class, 'legacy_whatsapp_frontend'], 20, 1);
     }
@@ -424,6 +425,42 @@ final class TBX_Native_Contacts
      * Es distinta de la captura de datos, queda apagada por defecto y nunca
      * carga mientras el antiguo plugin esté activo.
      */
+    /**
+     * Una landing con HTML completo no ejecuta wp_head/wp_footer; permite
+     * incluir únicamente el puente de conversiones cuando el admin optó
+     * expresamente por el modo compatible y el plugin legado ya está inactivo.
+     */
+    public static function full_html_form_gtm_snippet(): string
+    {
+        if (!self::can_emit_form_gtm()) {
+            return '';
+        }
+        $url = add_query_arg('ver', TBX_ADMIN_VERSION,
+            TBX_ADMIN_URL . 'assets/tibox-landing-lead-bridge.js');
+        return '<script id="tbx-landing-gtm-config">window.TBX_LANDING_GTM_COMPAT={"enabled":true};</script>' .
+            '<script id="tbx-landing-lead-bridge" src="' . esc_url($url) . '" defer></script>';
+    }
+
+    public static function enqueue_landing_gtm_bridge(): void
+    {
+        if (!self::can_emit_form_gtm()) {
+            return;
+        }
+        $file = TBX_ADMIN_DIR . 'assets/tibox-landing-lead-bridge.js';
+        wp_enqueue_script(
+            'tbx-landing-lead-gtm-compat',
+            TBX_ADMIN_URL . 'assets/tibox-landing-lead-bridge.js',
+            [],
+            (string) filemtime($file),
+            ['in_footer' => true, 'strategy' => 'defer']
+        );
+        wp_add_inline_script(
+            'tbx-landing-lead-gtm-compat',
+            'window.TBX_LANDING_GTM_COMPAT=' . wp_json_encode(['enabled' => true]) . ';',
+            'before'
+        );
+    }
+
     public static function enqueue_form_gtm(): void
     {
         if (!self::can_emit_form_gtm()) {
