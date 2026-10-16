@@ -19,6 +19,7 @@ function get_option($name, $default = null) {
     return match ($name) {
         'tbx_admin_contact_whatsapp' => $GLOBALS['wa_settings'],
         'tbx_contacts_native_enabled' => '0',
+        'tbx_contacts_click_tracking_enabled' => '1',
         default => $default
     };
 }
@@ -37,6 +38,7 @@ function ensure($pass, $why) {
 }
 ensure(TBX_Native_Contacts::legacy_active(), 'Legacy plugin is required to be active');
 ensure(!TBX_Native_Contacts::can_capture(), 'Native form capture must remain disabled');
+ensure(!TBX_Native_Contacts::can_capture_clicks(), 'Native click recording must be blocked while legacy is active');
 ensure(TBX_Native_Contacts::wa_button_enabled(), 'WA button should be enabled independently');
 TBX_Native_Contacts::enqueue_clicks();
 ensure(!$GLOBALS['scripts'], 'Native tracking JS must not load with legacy');
