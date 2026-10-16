@@ -68,7 +68,7 @@ if (TBX_Native_Contacts::can_capture() || !TBX_Native_Contacts::can_capture_clic
 $headers = ['origin' => 'https://prodata.cl', 'user_agent' => 'Mozilla/5.0 (Linux; Android 14) Chrome/126.0'];
 $body = [
     'type' => 'whatsapp', 'ref' => 'ABC234', 'destination' => '56912345678',
-    'button_text' => 'Cotizar', 'location' => 'header',
+    'button_text' => 'Cotizar', 'location' => 'header', 'origin' => 'boton-tibox',
     'path' => '/lp/porticos/', 'campaign' => ['source'=>'google','medium'=>'cpc'],
 ];
 $response = TBX_Native_Contacts::receive_click(new WP_REST_Request($body, $headers));
@@ -78,7 +78,8 @@ if ($response->status !== 200 || count($wpdb->rows) !== 1) {
 $entry = $wpdb->rows[0];
 if ($entry['ref_code'] !== 'ABC234' || $entry['device'] !== 'mobile' ||
     $entry['source_plugin'] !== 'tibox-admin-native' ||
-    $entry['type'] !== 'whatsapp' || $entry['source'] !== 'google') {
+    $entry['type'] !== 'whatsapp' || $entry['source'] !== 'google' ||
+    $entry['origin'] !== 'boton-tibox') {
     fwrite(STDERR, 'Saved click mismatch: '.json_encode($entry).PHP_EOL); exit(1);
 }
 if (isset($entry['visitor_id']) || isset($entry['user_agent']) || isset($entry['ip_hash'])) {
