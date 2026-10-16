@@ -312,3 +312,20 @@ Esta iteración agrega:
 - Nuevas pruebas automatizadas de dataLayer, consentimiento, detección de duplicados, estado del panel e icono.
 
 **Nueva descarga para staging:** `v1.10.1-beta.1/tibox-admin-1.10.1-beta.zip`. La versión anterior 1.10.0 beta continúa siendo un antecedente histórico, no utilizarla para nuevas instalaciones de prueba. Las dos versiones son betas; ninguna supone que TIBOX Leads esté desactivado ni que la compatibilidad real se haya validado.
+
+
+## TIBOX Admin 1.10.2 beta — compatibilidad de conversiones verificada en código
+
+Se añadió una capa **opt-in** para el evento heredado `tbx_generate_lead` con las claves originales `form_id`, `form_name` y `origen_formulario`:
+- **WPForms AJAX:** usa `wpformsAjaxSubmitSuccess` y deduplicación de callbacks.
+- **WPForms no AJAX:** el backend deja cookie corta con solo el ID del formulario si guardó el contacto; se consume una sola vez en la navegación posterior.
+- **Elementor Pro:** escucha `submit_success`.
+- **Contact Form 7:** escucha `wpcf7mailsent`.
+- **HTML a medida:** reconoce `tbx:form-success` enviado por integración propia después de la confirmación del backend; no considera un clic en Enviar como lead.
+- Cuando TIBOX Leads permanece activo, el script nativo **no se carga**. Respeta consentimiento del sitio (`TBX_ANALYTICS_ALLOWED`), Global Privacy Control, evita duplicados y no añade PII al `dataLayer`.
+- La captura nativa de formularios continúa funcionando aunque la opción GTM heredada esté apagada; ambas son ajustes independientes.
+- La configuración aparece en **TIBOX Admin → Contactos → Captura directa de formularios → Compatibilidad GTM: emitir tbx_generate_lead** y viene **desactivada por defecto**.
+
+Consulta el documento detallado [Matriz de paridad de medición](docs/matriz-paridad-medicion.md) para nombres de eventos, etiquetas que podrían duplicarse y el plan de QA por sitio.
+
+**Límite de garantía:** el código y sus tests comprueban emisiones esperadas; la configuración de GTM, los eventos recibidos por GA4, las acciones de conversión en Ads y las landings HTML específicas son externos a este repositorio y deben validarse con Preview/DebugView antes de retirar TIBOX Leads.
