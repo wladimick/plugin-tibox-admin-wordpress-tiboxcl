@@ -17,11 +17,16 @@ class WPDB_Form_Test {
     public int $insert_id = 0;
     public array $contacts = [];
     public int $sequence = 0;
+    public bool $failContactOnce = false;
     public function insert(string $table, array $data, array $format = []) {
         if (str_ends_with($table, 'tbx_admin_contact_sequence')) {
             $this->sequence++;
             $this->insert_id = $this->sequence;
             return 1;
+        }
+        if ($this->failContactOnce) {
+            $this->failContactOnce = false;
+            return false;
         }
         $this->contacts[] = $data;
         return 1;
@@ -98,6 +103,21 @@ $data['id'] = '10646';
 TBX_Native_Contacts::wpforms($fields, [], $data, '103');
 check_form(count($wpdb->contacts) === 2, 'Native capture must still save forms with GTM compat OFF');
 
+// Si la base de datos falla una vez, NO se debe marcar el envío como
+// procesado exitosamente. Una reejecución del hook en la misma solicitud
+// puede recuperarse sin perder el contacto y sin duplicar una inserción previa.
+$data['id'] = '19597';
+$wpdb->failContactOnce = true;
+TBX_Native_Contacts::wpforms($fields, [], $data, '105');
+check_form(count($wpdb->contacts) === 2, 'Failed DB insertion cannot count as saved contact');
+TBX_Native_Contacts::wpforms($fields, [], $data, '105');
+check_form(count($wpdb->contacts) === 3, 'Retry after transient DB error must succeed exactly once');
+TBX_Native_Contacts::wpforms($fields, [], $data, '105');
+check_form(count($wpdb->contacts) === 3, 'Successful retry must be deduplicated');
+
+// Rehabilitar GTM en el controlador no altera la captura persistida.
+$GLOBALS['options']['tbx_contacts_form_gtm_compat_enabled'] = '1';
+
 // En presencia de TIBOX Leads no deben emitirse eventos ni insertar duplicados.
 eval('function tbx_leads_insert($row) { return 1; }');
 check_form(!TBX_Native_Contacts::can_capture(), 'Legacy should block native forms');
@@ -107,5 +127,5 @@ TBX_Native_Contacts::enqueue_form_gtm();
 check_form(!$GLOBALS['scripts'], 'Legacy should prevent loading GTM compat script');
 $data['id'] = '9918';
 TBX_Native_Contacts::wpforms($fields, [], $data, '104');
-check_form(count($wpdb->contacts) === 2, 'Legacy coexistence must not double insert');
+check_form(count($wpdb->contacts) === 3, 'Legacy coexistence must not double insert');
 echo "Native WPForms capture and legacy GTM gating smoke tests passed\n";
