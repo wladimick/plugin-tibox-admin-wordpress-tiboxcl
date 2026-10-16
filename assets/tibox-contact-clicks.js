@@ -129,6 +129,8 @@
     var a = event.target.closest('a[href]');
     var href = a ? (a.getAttribute('href') || '') : '';
     var kind = kindOf(href);
+    // Un widget externo puede tener un enlace genérico alrededor. Solo
+    // interpretarlo como WhatsApp si su clase identifica realmente un widget WA.
     var widget = null;
     if (!kind) {
       widget = event.target.closest(WA_WIDGETS);
