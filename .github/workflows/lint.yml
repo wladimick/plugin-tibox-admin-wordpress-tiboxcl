@@ -32,6 +32,10 @@ jobs:
         run: node tests/vitals-smoke.cjs
       - name: Verify existing wpforms_submit event without duplicate conversions
         run: node tests/tracking-forms-regression.cjs
+      - name: Verify native landing REST conversion success and deduplication
+        run: node tests/landing-gtm-bridge-smoke.cjs
+      - name: Verify standalone HTML landing opt-in conversion injection
+        run: php tests/landing-gtm-html-smoke.php
       - name: Verify native Contact form sanitation and legacy mutual exclusion
         run: php tests/native-contacts-smoke.php
       - name: Verify native WPForms persistence and conversion compatibility gating
