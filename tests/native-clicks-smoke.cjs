@@ -54,7 +54,6 @@ assert.deepEqual(x.sent.map(row => row.value.type),['whatsapp','phone','email'])
 assert.ok(x.sent.every(row => !('visitor_id' in row.value)));
 
 x = session();
-click = function () {}; // The event below uses this session directly.
 function clicked(sess, anchor) {
   const target = { closest: selector => selector === 'a[href]' ? anchor : null };
   for (const handler of sess.handlers.click) handler({target});
@@ -78,4 +77,21 @@ clicked(x, secondNumber);
 assert.equal(x.sent[0].value.destination,'56988887777','Unify must redirect to configured number');
 assert.match(new URL(secondNumber.href).searchParams.get('text'),/Ref: [A-HJ-NP-Z2-9]{6}$/);
 assert.ok(x.sent.every(row => !('visitor_id' in row.value)));
+
+// Widgets que envuelven el enlace, como Click to Chat o Join.chat,
+// deben registrar sin introducir datos ficticios si el destino es opaco.
+x = session();
+const waWidget = {
+  closest: selector => selector === 'a[href]' ? null : null,
+  querySelector: selector => selector === 'a[href]' ? el('https://wa.link/a1b2c3','Consulta rápida') : null,
+  getAttribute: () => '',
+  textContent: 'WhatsApp'
+};
+for (const handler of x.handlers.click) {
+  handler({target: {closest: selector => selector === 'a[href]' ? null : waWidget}});
+}
+assert.equal(x.sent.length, 1, 'A WhatsApp widget should be recorded');
+assert.equal(x.sent[0].value.type, 'whatsapp');
+assert.equal(x.sent[0].value.ref, '', 'Do not invent a reference for opaque WA links');
+
 console.log('Native contact click client smoke tests passed');
