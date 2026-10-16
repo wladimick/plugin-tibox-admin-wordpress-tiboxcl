@@ -349,9 +349,12 @@ final class TBX_Native_Contacts
             ];
         }
         $form_id = self::scalar($form_data['id'] ?? '', 100);
-        $saved = self::record('wpforms', $form_id,
+        // WPForms ejecuta este hook tras confirmar el envío. La conversión
+        // comercial NO debe perderse si falla nuestra tabla secundaria de
+        // Contactos: registrar el contacto y medir éxito son independientes.
+        self::record('wpforms', $form_id,
             self::scalar($form_data['settings']['form_title'] ?? '', 190), $raw);
-        if ($saved && self::can_emit_form_gtm() && $form_id !== '' &&
+        if (self::can_emit_form_gtm() && $form_id !== '' &&
             !wp_doing_ajax() && !(defined('REST_REQUEST') && REST_REQUEST) &&
             !headers_sent()) {
             // El antiguo plugin marcaba los WPForms sin AJAX con un cookie
