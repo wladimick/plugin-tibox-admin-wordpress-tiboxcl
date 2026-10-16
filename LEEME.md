@@ -301,3 +301,14 @@ No se ha probado el flujo real del WhatsApp de Prodata en un navegador conectado
 11. Si falla cualquier paso, desactivar captura nativa y registro nativo de clics, reactivar el plugin anterior y revisar que su botón y captación se recuperen. No eliminar las tablas antiguas.
 
 **Criterio de cierre:** aprobar la operación de los dos sitios con evidencias de navegador y BD, registrar resultados en TIBOX Projects #1416 y recién entonces plantear retirar TIBOX Leads. Un clic registrado es intención de contacto, no prueba de mensaje recibido en WhatsApp.
+
+ 
+## Actualización 1.10.1 beta — antes de instalar en Prodata y TIBOX
+
+Esta iteración agrega:
+- Eventos `tbx_whatsapp_click`, `tbx_phone_click`, `tbx_email_click` en `dataLayer` como compatibilidad **opcional** con los disparadores históricos de Google Tag Manager. **Desactivado por defecto**, solo disponible cuando el capturador nativo toma el control y se respetan señales de consentimiento/GPC. Revisar primero GTM para evitar conversiones duplicadas.
+- Arreglo del estado mostrado en WordPress: el administrador conectado verá «Seguimiento preparado» cuando corresponda. Las pruebas de clics deben hacerse como visitante en incógnito para no contaminar el informe.
+- Icono de conversación/teléfono SVG estático del botón flotante, accesible y sin dependencia de fuentes o servicios externos.
+- Nuevas pruebas automatizadas de dataLayer, consentimiento, detección de duplicados, estado del panel e icono.
+
+**Nueva descarga para staging:** `v1.10.1-beta.1/tibox-admin-1.10.1-beta.zip`. La versión anterior 1.10.0 beta continúa siendo un antecedente histórico, no utilizarla para nuevas instalaciones de prueba. Las dos versiones son betas; ninguna supone que TIBOX Leads esté desactivado ni que la compatibilidad real se haya validado.
