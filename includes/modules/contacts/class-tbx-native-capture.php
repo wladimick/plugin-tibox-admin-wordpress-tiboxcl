@@ -13,6 +13,7 @@ if (!defined('ABSPATH')) {
 final class TBX_Native_Contacts
 {
     public const OPTION = 'tbx_contacts_native_enabled';
+    public const CLICK_OPTION = 'tbx_contacts_click_tracking_enabled';
     private const SEQUENCE_VERSION = '1.0.0';
     private const SEQUENCE_OPTION = 'tbx_native_contact_sequence_version';
     private static array $seen = [];
@@ -24,6 +25,7 @@ final class TBX_Native_Contacts
             'enabled' => '0', 'number' => '', 'label' => 'Cotizar por WhatsApp',
             'message' => 'Hola, estoy viendo {pagina} en su sitio web y me gustaría recibir una cotización.',
             'side' => 'right',
+            'unify' => '0',
         ];
         return array_merge($defaults, is_array($saved) ? $saved : []);
     }
@@ -76,8 +78,19 @@ final class TBX_Native_Contacts
 
     public static function can_capture(): bool
     {
-        // Incluso si se configuró "activo" antes, jamás duplicar el plugin antiguo.
+        // Exclusivamente formularios confirmados; nunca duplicar el plugin antiguo.
         return self::enabled() && !self::legacy_active() && !is_user_logged_in();
+    }
+
+    public static function click_tracking_enabled(): bool
+    {
+        return get_option(self::CLICK_OPTION, '0') === '1';
+    }
+
+    public static function can_capture_clicks(): bool
+    {
+        // Control independiente de formularios. Si hay TIBOX Leads, este captura.
+        return self::click_tracking_enabled() && !self::legacy_active() && !is_user_logged_in();
     }
 
     public static function init(): void
@@ -373,7 +386,7 @@ final class TBX_Native_Contacts
 
     public static function enqueue_clicks(): void
     {
-        if (!self::can_capture()) {
+        if (!self::can_capture_clicks()) {
             return;
         }
         $file = TBX_ADMIN_DIR . 'assets/tibox-contact-clicks.js';
@@ -385,9 +398,16 @@ final class TBX_Native_Contacts
             ['in_footer' => true, 'strategy' => 'defer']
         );
 
+        $wa = self::whatsapp_settings();
         wp_add_inline_script(
             'tbx-native-contact-clicks',
-            'window.TBX_CONTACT_ENDPOINT=' . wp_json_encode(esc_url_raw(rest_url('tibox/v1/contact-event'))) . ';',
+            'window.TBX_CONTACT_ENDPOINT=' . wp_json_encode(esc_url_raw(rest_url('tibox/v1/contact-event'))) .
+            ';window.TBX_CONTACT_LINK_CONFIG=' . wp_json_encode([
+                'unify' => $wa['unify'] === '1',
+                'number' => $wa['number'],
+                'message' => $wa['message'],
+                'site' => get_bloginfo('name'),
+            ]) . ';',
             'before'
         );
     }
@@ -439,7 +459,7 @@ final class TBX_Native_Contacts
 
     public static function receive_click(WP_REST_Request $request): WP_REST_Response
     {
-        if (!self::can_capture()) {
+        if (!self::can_capture_clicks()) {
             return new WP_REST_Response(['ok' => false], 403);
         }
         $origin = $request->get_header('origin') ?: $request->get_header('referer');
@@ -522,12 +542,14 @@ final class TBX_Native_Contacts
         $valid = (bool) preg_match('/^[0-9]{8,15}$/', $number);
         $config = [
             'enabled' => !empty($in['enabled']) && $valid ? '1' : '0',
+            'unify' => !empty($in['unify']) && $valid ? '1' : '0',
             'number' => $valid ? $number : '',
             'label' => self::scalar($in['label'] ?? 'Cotizar por WhatsApp', 80),
             'message' => mb_substr(sanitize_textarea_field((string) ($in['message'] ?? '')), 0, 300),
             'side' => ($in['side'] ?? '') === 'left' ? 'left' : 'right',
         ];
         update_option(self::WA_OPTION, $config, false);
+        update_option(self::CLICK_OPTION, !empty($in['track_clicks']) ? '1' : '0', false);
         wp_safe_redirect(add_query_arg('wa_saved', $valid ? '1' : '0', TBX_Admin::tab_url('contactos')));
         exit;
     }
@@ -539,8 +561,8 @@ final class TBX_Native_Contacts
         echo '<p>Este botón funciona independientemente de la captura directa de formularios. Puedes activarlo mientras TIBOX Leads sigue instalado: TIBOX Admin muestra un solo botón y TIBOX Leads conserva el registro de clics y las referencias WhatsApp.</p>';
         if (self::legacy_active()) {
             echo '<p class="tbx-muted"><strong>Convivencia:</strong> los ajustes del botón se administran aquí; el registro de clics sigue funcionando en el plugin antiguo hasta que migremos completamente la captura.</p>';
-        } elseif (!self::can_capture()) {
-            echo '<p class="tbx-muted"><strong>Atención:</strong> el botón puede abrir WhatsApp, pero sus clics no quedarán registrados individualmente mientras la captura nativa esté desactivada y no exista el plugin antiguo.</p>';
+        } elseif (!self::can_capture_clicks()) {
+            echo '<p class="tbx-muted"><strong>Atención:</strong> el botón abre WhatsApp, pero el registro individual de clics está desactivado. Puedes habilitarlo aquí sin activar la captura de formularios.</p>';
         }
         if (isset($_GET['wa_saved'])) {
             $ok = sanitize_key(wp_unslash($_GET['wa_saved'])) === '1';
@@ -553,13 +575,23 @@ final class TBX_Native_Contacts
         wp_nonce_field('tbx_contacts_wa_settings');
         echo '<p><label><input type="checkbox" name="tbx_wa[enabled]" value="1"' .
             checked($wa['enabled'], '1', false) . '> Mostrar botón flotante</label></p>';
+        echo '<p><label><input type="checkbox" name="tbx_wa[track_clicks]" value="1"' .
+            checked(self::click_tracking_enabled(), true, false) .
+            '> Registrar clics de WhatsApp, teléfono y correo en Contactos (independiente de los formularios)</label></p>';
+        if (self::legacy_active()) {
+            echo '<p class="tbx-muted">Puedes dejar preparado el seguimiento nuevo, pero no se activará mientras TIBOX Leads esté instalado y activo. Este seguirá registrando los clics sin duplicados.</p>';
+        }
         echo '<p><label>Número (con código de país, solo dígitos)<br><input class="regular-text" type="text" name="tbx_wa[number]" value="' .
             esc_attr((string) $wa['number']) . '" placeholder="56912345678"></label></p>';
         echo '<p><label>Etiqueta<br><input class="regular-text" type="text" name="tbx_wa[label]" value="' .
             esc_attr((string) $wa['label']) . '"></label></p>';
         echo '<p><label>Mensaje predeterminado<br><textarea class="large-text" rows="3" name="tbx_wa[message]">' .
             esc_textarea((string) $wa['message']) . '</textarea></label></p>';
-        echo '<p class="tbx-muted">Variables permitidas: {pagina} y {sitio}. Las referencias se agregan cuando hay un capturador de clics activo.</p>';
+        echo '<p class="tbx-muted">Variables permitidas: {pagina} y {sitio}. Las referencias de seis caracteres se agregan a enlaces WhatsApp compatibles cuando hay un capturador activo.</p>';
+        echo '<p><label><input type="checkbox" name="tbx_wa[unify]" value="1"' .
+            checked((string) $wa['unify'], '1', false) .
+            '> Unificar otros enlaces de WhatsApp con este número y mensaje</label></p>';
+        echo '<p class="tbx-muted">Opcional: redirige enlaces WhatsApp reconocidos al destino configurado. Dejar desactivado si hay números distintos en el sitio.</p>';
         echo '<p><label>Ubicación <select name="tbx_wa[side]">';
         foreach (['right' => 'Derecha', 'left' => 'Izquierda'] as $v => $label) {
             echo '<option value="' . esc_attr($v) . '"' . selected($wa['side'], $v, false) . '>' . esc_html($label) . '</option>';
@@ -592,7 +624,7 @@ final class TBX_Native_Contacts
     public static function render_settings(): void
     {
         echo '<div class="tbx-import-card"><h2>Captura directa de formularios</h2>';
-        echo '<p>Registra envíos confirmados de WPForms, Elementor y Contact Form 7, además de clics individuales en WhatsApp, teléfono y correo, sin agregar conversiones duplicadas a GTM.</p>';
+        echo '<p>Registra envíos confirmados de WPForms, Elementor y Contact Form 7 sin generar conversiones adicionales. El seguimiento de WhatsApp, teléfono y correo se configura por separado en «Botón flotante de WhatsApp».</p>';
         if (self::legacy_active()) {
             echo '<div class="notice notice-warning inline"><p>El plugin original TIBOX Leads sigue activo: la captura directa está bloqueada para evitar duplicados. Mantén este plugin antiguo durante la importación del historial.</p></div>';
         }
@@ -604,7 +636,7 @@ final class TBX_Native_Contacts
         wp_nonce_field('tbx_contacts_native_settings');
         echo '<label><input type="checkbox" name="native_enabled" value="1"' .
             checked(self::enabled(), true, false) . (self::legacy_active() ? ' disabled' : '') .
-            '> Registrar formularios y clics de contacto directamente desde TIBOX Admin</label>';
+            '> Registrar formularios directamente desde TIBOX Admin</label>';
         if (self::legacy_active()) {
             echo '<input type="hidden" name="native_enabled" value="0">';
         }
