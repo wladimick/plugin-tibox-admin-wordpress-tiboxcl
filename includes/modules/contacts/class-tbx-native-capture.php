@@ -749,6 +749,7 @@ final class TBX_Native_Contacts
             checked(self::form_gtm_enabled(), true, false) .
             '> Compatibilidad GTM: emitir tbx_generate_lead SOLO tras confirmar envíos de formularios</label></p>';
         echo '<p class="tbx-muted">Opcional y desactivado por defecto. Durante la convivencia con TIBOX Leads no emite eventos nuevos. Revisar en GTM si ya existen triggers para wpforms_submit, form_submit, generate_lead o submit_lead_form; NO deben marcarse dos conversiones por un mismo envío.</p>';
+        echo '<p class="tbx-muted">También identifica el éxito real de landings que envíen solicitudes al endpoint propio /wp-json/tibox/v1/lead, incluso si se muestran como HTML completo sin wp_head/wp_footer. Exige confirmación del servidor lead_created=true y un lead_id guardado. No mide formularios HTML de otros sistemas automáticamente.</p>';
         echo '<p class="tbx-muted">Desactivada por defecto. Primero importa y comprueba el histórico y realiza un respaldo. Para un cambio sin interrupción puedes preparar la casilla mientras el legado siga activo: TIBOX Admin NO captura hasta que el legado se desactive. Comprueba todos los formularios tras el corte y mantén disponible el rollback.</p>';
         submit_button('Guardar configuración', 'secondary', 'submit', false);
         echo '</form></div>';
