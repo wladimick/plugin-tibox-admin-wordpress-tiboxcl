@@ -24,8 +24,25 @@
   }
   function findForm(target, selector) {
     if (!target) return null;
+    // jQuery puede entregar elementos como colecciones (por ejemplo,
+    // el argumento `form` de WPForms). No inspeccionar otras propiedades.
+    if (target.jquery && target[0]) target = target[0];
     if (target.matches && target.matches(selector)) return target;
     return target.closest ? target.closest(selector) : null;
+  }
+  function resolveForm(selector, candidates) {
+    for (var i = 0; i < candidates.length; i++) {
+      var item = candidates[i];
+      if (!item) continue;
+      var found = findForm(item, selector);
+      if (found) return found;
+      // Algunas variantes de WPForms entregan una referencia en response.form.
+      if (item.form) {
+        found = findForm(item.form, selector);
+        if (found) return found;
+      }
+    }
+    return null;
   }
   function consented() {
     return window.TBX_ANALYTICS_ALLOWED !== false &&
@@ -40,11 +57,15 @@
     var now = Date.now();
     var key = origin + '|' + id + '|' + name;
     if (form) {
+      // Formulario concreto: no bloquear otro formulario con mismo ID/nombre.
+      // Algunos plugins disparan dos callbacks para el mismo envío AJAX.
       if (now - (seen.get(form) || 0) < 4000) return false;
       seen.set(form, now);
+    } else {
+      // La confirmación no AJAX solo entrega el ID por cookie efímera.
+      if (now - (lastEvent[key] || 0) < 4000) return false;
+      lastEvent[key] = now;
     }
-    if (now - (lastEvent[key] || 0) < 4000) return false;
-    lastEvent[key] = now;
     window.dataLayer = window.dataLayer || [];
     window.dataLayer.push({
       event: 'tbx_generate_lead',
@@ -93,14 +114,16 @@
   // Elementor: evento tras envío confirmado de Elementor Pro.
   function bindJquery() {
     if (!window.jQuery) return;
-    window.jQuery(document).on('wpformsAjaxSubmitSuccess', function (event) {
-      var form = findForm(event.target, 'form.wpforms-form');
-      if (!form) return;
+    window.jQuery(document).on('wpformsAjaxSubmitSuccess', function (event, response, formArg) {
+      var form = resolveForm('form.wpforms-form',
+        [event && event.target, formArg, response, event && event.originalEvent && event.originalEvent.target]);
+      if (!form) return; // Nunca atribuir a un formulario equivocado.
       var m = wpformsMeta(form);
       push('wpforms', m.id, m.name, form);
     });
     window.jQuery(document).on('submit_success', '.elementor-form', function (event) {
-      var form = findForm(event.target, 'form.elementor-form');
+      var form = resolveForm('form.elementor-form',
+        [event && event.target, this, event && event.originalEvent && event.originalEvent.target]);
       if (!form) return;
       var m = elementorMeta(form);
       push('elementor', m.id, m.name, form);
