@@ -14,6 +14,7 @@ final class TBX_Native_Contacts
 {
     public const OPTION = 'tbx_contacts_native_enabled';
     public const CLICK_OPTION = 'tbx_contacts_click_tracking_enabled';
+    public const FORM_GTM_OPTION = 'tbx_contacts_form_gtm_compat_enabled';
     private const SEQUENCE_VERSION = '1.0.0';
     private const SEQUENCE_OPTION = 'tbx_native_contact_sequence_version';
     private static array $seen = [];
@@ -95,6 +96,18 @@ final class TBX_Native_Contacts
         return self::click_tracking_enabled() && !self::legacy_active() && !is_user_logged_in();
     }
 
+    public static function form_gtm_enabled(): bool
+    {
+        return get_option(self::FORM_GTM_OPTION, '0') === '1';
+    }
+
+    public static function can_emit_form_gtm(): bool
+    {
+        // Reutilizar conversiones legadas SOLO si el capturador propio controla
+        // realmente los formularios y el plugin anterior ya no está activo.
+        return self::can_capture() && self::form_gtm_enabled();
+    }
+
     public static function init(): void
     {
         add_action('init', [self::class, 'install']);
@@ -105,6 +118,7 @@ final class TBX_Native_Contacts
         add_action('wpcf7_mail_sent', [self::class, 'contact_form_7'], 20, 1);
         add_action('rest_api_init', [self::class, 'register_click_route']);
         add_action('wp_enqueue_scripts', [self::class, 'enqueue_clicks']);
+        add_action('wp_enqueue_scripts', [self::class, 'enqueue_form_gtm'], 15);
         add_action('wp_enqueue_scripts', [self::class, 'enqueue_wa_button'], 20);
         add_filter('option_tbx_leads_settings', [self::class, 'legacy_whatsapp_frontend'], 20, 1);
     }
@@ -252,20 +266,20 @@ final class TBX_Native_Contacts
         return $out;
     }
 
-    private static function record(string $origin, string $form_id, string $form_name, array $raw): void
+    private static function record(string $origin, string $form_id, string $form_name, array $raw): bool
     {
         if (!self::can_capture()) {
-            return;
+            return false;
         }
         $fields = self::normalize_fields($raw);
         $contact = self::extract_contact($fields);
         if (!$fields || (!array_filter($contact) && !$form_id)) {
-            return;
+            return false;
         }
         $form_id = self::scalar($form_id, 100);
         $idempotency = hash('sha256', wp_json_encode([$origin, $form_id, $fields]));
         if (isset(self::$seen[$idempotency])) {
-            return; // hooks duplicados en la misma solicitud.
+            return false; // hooks duplicados en la misma solicitud.
         }
         self::$seen[$idempotency] = true;
 
@@ -284,7 +298,7 @@ final class TBX_Native_Contacts
             ...self::attribution(),
             ...TBX_Analytics_Context::classify((string) ($_SERVER['HTTP_USER_AGENT'] ?? '')),
         ];
-        self::insert_native($data);
+        return self::insert_native($data);
     }
 
     /**
@@ -332,8 +346,22 @@ final class TBX_Native_Contacts
                 't' => $f['type'] ?? '',
             ];
         }
-        self::record('wpforms', self::scalar($form_data['id'] ?? '', 100),
+        $form_id = self::scalar($form_data['id'] ?? '', 100);
+        $saved = self::record('wpforms', $form_id,
             self::scalar($form_data['settings']['form_title'] ?? '', 190), $raw);
+        if ($saved && self::can_emit_form_gtm() && $form_id !== '' &&
+            !wp_doing_ajax() && !(defined('REST_REQUEST') && REST_REQUEST) &&
+            !headers_sent()) {
+            // El antiguo plugin marcaba los WPForms sin AJAX con un cookie
+            // transitorio de ID: mantener la misma garantía sin dato personal.
+            setcookie('tbx_admin_form_gtm', rawurlencode($form_id), [
+                'expires' => time() + 120,
+                'path' => '/',
+                'secure' => is_ssl(),
+                'httponly' => false,
+                'samesite' => 'Lax',
+            ]);
+        }
     }
 
     public static function elementor($record, $handler = null): void
@@ -384,6 +412,31 @@ final class TBX_Native_Contacts
         }
         self::record('cf7', (string) $contact_form->id(),
             method_exists($contact_form, 'title') ? (string) $contact_form->title() : '', $raw);
+    }
+
+    /**
+     * Compatibilidad con el evento GTM tbx_generate_lead de TIBOX Leads.
+     * Es distinta de la captura de datos, queda apagada por defecto y nunca
+     * carga mientras el antiguo plugin esté activo.
+     */
+    public static function enqueue_form_gtm(): void
+    {
+        if (!self::can_emit_form_gtm()) {
+            return;
+        }
+        $file = TBX_ADMIN_DIR . 'assets/tibox-form-conversions.js';
+        wp_enqueue_script(
+            'tbx-native-form-gtm-compat',
+            TBX_ADMIN_URL . 'assets/tibox-form-conversions.js',
+            [],
+            (string) filemtime($file),
+            ['in_footer' => true, 'strategy' => 'defer']
+        );
+        wp_add_inline_script(
+            'tbx-native-form-gtm-compat',
+            'window.TBX_FORM_GTM_COMPAT=' . wp_json_encode(['enabled' => true]) . ';',
+            'before'
+        );
     }
 
     public static function enqueue_clicks(): void
@@ -629,6 +682,7 @@ final class TBX_Native_Contacts
             exit;
         }
         update_option(self::OPTION, $enable ? '1' : '0', false);
+        update_option(self::FORM_GTM_OPTION, !empty($_POST['form_gtm_compat']) ? '1' : '0', false);
         wp_safe_redirect(add_query_arg('native', 'saved', TBX_Admin::tab_url('contactos')));
         exit;
     }
@@ -636,7 +690,7 @@ final class TBX_Native_Contacts
     public static function render_settings(): void
     {
         echo '<div class="tbx-import-card"><h2>Captura directa de formularios</h2>';
-        echo '<p>Registra envíos confirmados de WPForms, Elementor y Contact Form 7 sin generar conversiones adicionales. El seguimiento de WhatsApp, teléfono y correo se configura por separado en «Botón flotante de WhatsApp».</p>';
+        echo '<p>Registra envíos confirmados de WPForms, Elementor y Contact Form 7. El seguimiento de WhatsApp, teléfono y correo se configura por separado en «Botón flotante de WhatsApp».</p>';
         if (self::legacy_active()) {
             echo '<div class="notice notice-warning inline"><p>El plugin original TIBOX Leads sigue activo: la captura directa está bloqueada para evitar duplicados. Mantén este plugin antiguo durante la importación del historial.</p></div>';
         }
@@ -652,6 +706,10 @@ final class TBX_Native_Contacts
         if (self::legacy_active()) {
             echo '<input type="hidden" name="native_enabled" value="0">';
         }
+        echo '<p><label><input type="checkbox" name="form_gtm_compat" value="1"' .
+            checked(self::form_gtm_enabled(), true, false) .
+            '> Compatibilidad GTM: emitir tbx_generate_lead SOLO tras confirmar envíos de formularios</label></p>';
+        echo '<p class="tbx-muted">Opcional y desactivado por defecto. Durante la convivencia con TIBOX Leads no emite eventos nuevos. Revisar en GTM si ya existen triggers para wpforms_submit, form_submit, generate_lead o submit_lead_form; NO deben marcarse dos conversiones por un mismo envío.</p>';
         echo '<p class="tbx-muted">Desactivada por defecto. Primero importa y comprueba el historial, realiza un respaldo y desactiva TIBOX Leads; después habilita esta opción y prueba un formulario de cada tipo. No requiere mantener el plugin anterior.</p>';
         submit_button('Guardar configuración', 'secondary', 'submit', false);
         echo '</form></div>';
