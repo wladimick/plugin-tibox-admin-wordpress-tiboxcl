@@ -87,4 +87,33 @@
     }
     return responsePromise;
   };
+
+  // Algunas landings HTML anteriores envían al mismo endpoint usando XHR
+  // en vez de fetch. Mantener una sola regla: contar únicamente una
+  // respuesta HTTP satisfactoria con lead_created=true y lead_id guardado.
+  var OriginalXHR = window.XMLHttpRequest;
+  if (typeof OriginalXHR === 'function' && OriginalXHR.prototype) {
+    var rawOpen = OriginalXHR.prototype.open;
+    var rawSend = OriginalXHR.prototype.send;
+    OriginalXHR.prototype.open = function (method, url) {
+      this.__tbxLandingGtmRequest = {
+        eligible: String(method || '').toUpperCase() === 'POST' && isLeadEndpoint(url)
+      };
+      return rawOpen.apply(this, arguments);
+    };
+    OriginalXHR.prototype.send = function (body) {
+      var state = this.__tbxLandingGtmRequest;
+      if (state && state.eligible && typeof this.addEventListener === 'function') {
+        var requestId = formIdOf({body: body});
+        this.addEventListener('load', function () {
+          if (this.status < 200 || this.status >= 300) return;
+          try {
+            var reply = this.responseType === 'json' ? this.response : JSON.parse(this.responseText);
+            record(reply, requestId);
+          } catch (_) {}
+        });
+      }
+      return rawSend.apply(this, arguments);
+    };
+  }
 })();
