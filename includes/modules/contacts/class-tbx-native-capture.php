@@ -26,6 +26,7 @@ final class TBX_Native_Contacts
             'message' => 'Hola, estoy viendo {pagina} en su sitio web y me gustaría recibir una cotización.',
             'side' => 'right',
             'unify' => '0',
+            'gtm_legacy' => '0',
         ];
         return array_merge($defaults, is_array($saved) ? $saved : []);
     }
@@ -408,6 +409,7 @@ final class TBX_Native_Contacts
                 'number' => $wa['number'],
                 'message' => $wa['message'],
                 'site' => get_bloginfo('name'),
+                'gtm_legacy' => ($wa['gtm_legacy'] ?? '0') === '1',
             ]) . ';',
             'before'
         );
@@ -546,6 +548,7 @@ final class TBX_Native_Contacts
         $config = [
             'enabled' => !empty($in['enabled']) && $valid ? '1' : '0',
             'unify' => !empty($in['unify']) && $valid ? '1' : '0',
+            'gtm_legacy' => !empty($in['gtm_legacy']) ? '1' : '0',
             'number' => $valid ? $number : '',
             'label' => self::scalar($in['label'] ?? 'Cotizar por WhatsApp', 80),
             'message' => mb_substr(sanitize_textarea_field((string) ($in['message'] ?? '')), 0, 300),
@@ -595,6 +598,10 @@ final class TBX_Native_Contacts
             checked((string) $wa['unify'], '1', false) .
             '> Unificar otros enlaces de WhatsApp con este número y mensaje</label></p>';
         echo '<p class="tbx-muted">Opcional: redirige enlaces WhatsApp reconocidos al destino configurado. Dejar desactivado si hay números distintos en el sitio.</p>';
+        echo '<p><label><input type="checkbox" name="tbx_wa[gtm_legacy]" value="1"' .
+            checked((string) ($wa['gtm_legacy'] ?? '0'), '1', false) .
+            '> Compatibilidad Google Tag Manager: emitir eventos tbx_whatsapp_click, tbx_phone_click y tbx_email_click</label></p>';
+        echo '<p class="tbx-muted">Solo después de retirar TIBOX Leads y revisar disparadores de GTM. Desactivado por defecto para no duplicar conversiones. Los eventos indican clics, no consultas confirmadas.</p>';
         echo '<p><label>Ubicación <select name="tbx_wa[side]">';
         foreach (['right' => 'Derecha', 'left' => 'Izquierda'] as $v => $label) {
             echo '<option value="' . esc_attr($v) . '"' . selected($wa['side'], $v, false) . '>' . esc_html($label) . '</option>';
