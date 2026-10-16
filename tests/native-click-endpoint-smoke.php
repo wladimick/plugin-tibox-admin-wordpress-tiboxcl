@@ -42,7 +42,8 @@ function add_action(...$args): void {}
 function add_filter(...$args) {}
 function get_option($k, $default = null) {
     return match($k) {
-        'tbx_contacts_native_enabled' => '1',
+        'tbx_contacts_native_enabled' => '0',
+        'tbx_contacts_click_tracking_enabled' => '1',
         'tbx_native_contact_sequence_version' => '1.0.0',
         default => $default,
     };
@@ -60,6 +61,9 @@ function get_transient($key) { return 0; }
 function set_transient($key, $value, $expires) { return true; }
 define('MINUTE_IN_SECONDS', 60);
 require_once dirname(__DIR__) . '/includes/modules/contacts/class-tbx-native-capture.php';
+if (TBX_Native_Contacts::can_capture() || !TBX_Native_Contacts::can_capture_clicks()) {
+    fwrite(STDERR, "Click capture must run independently of form capture\n"); exit(1);
+}
 
 $headers = ['origin' => 'https://prodata.cl', 'user_agent' => 'Mozilla/5.0 (Linux; Android 14) Chrome/126.0'];
 $body = [
