@@ -32,6 +32,8 @@ jobs:
         run: node tests/vitals-smoke.cjs
       - name: Verify native Contact form sanitation and legacy mutual exclusion
         run: php tests/native-contacts-smoke.php
+      - name: Verify native WPForms persistence and conversion compatibility gating
+        run: php tests/native-form-php-smoke.php
       - name: Verify contact admin settings with separate tracking and GTM opt-in
         run: php tests/contact-settings-smoke.php
       - name: Verify confirmed form conversions and legacy GTM parity
