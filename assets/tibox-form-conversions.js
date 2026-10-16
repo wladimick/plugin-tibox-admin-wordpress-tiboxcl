@@ -59,11 +59,12 @@
     if (form) {
       // Formulario concreto: no bloquear otro formulario con mismo ID/nombre.
       // Algunos plugins disparan dos callbacks para el mismo envío AJAX.
-      if (now - (seen.get(form) || 0) < 4000) return false;
+      // Misma ventana de deduplicación que el evento wpforms_submit existente.
+      if (now - (seen.get(form) || 0) < 2000) return false;
       seen.set(form, now);
     } else {
       // La confirmación no AJAX solo entrega el ID por cookie efímera.
-      if (now - (lastEvent[key] || 0) < 4000) return false;
+      if (now - (lastEvent[key] || 0) < 2000) return false;
       lastEvent[key] = now;
     }
     window.dataLayer = window.dataLayer || [];
