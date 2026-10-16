@@ -22,6 +22,7 @@ function get_option($key, $default = null) {
     return match ($key) {
         'tbx_admin_contact_whatsapp' => $GLOBALS['settings'],
         'tbx_contacts_click_tracking_enabled' => $GLOBALS['tracking'],
+        'tbx_contacts_form_gtm_compat_enabled' => $GLOBALS['form_gtm'] ?? '0',
         default => $default,
     };
 }
@@ -58,5 +59,20 @@ if (!str_contains($html, 'registro individual de clics está desactivado')) {
 }
 if (str_contains($html, 'name="tbx_wa[gtm_legacy]" value="1" checked="checked"')) {
     fwrite(STDERR, "GTM toggle should be off by default\n"); exit(1);
+}
+$GLOBALS['form_gtm'] = '1';
+ob_start();
+TBX_Native_Contacts::render_settings();
+$form_html = ob_get_clean();
+if (!str_contains($form_html, 'name="form_gtm_compat" value="1" checked="checked"') ||
+    !str_contains($form_html, 'tbx_generate_lead')) {
+    fwrite(STDERR, "Form GTM compatibility toggle must render enabled and documented\n"); exit(1);
+}
+$GLOBALS['form_gtm'] = '0';
+ob_start();
+TBX_Native_Contacts::render_settings();
+$form_html = ob_get_clean();
+if (str_contains($form_html, 'name="form_gtm_compat" value="1" checked="checked"')) {
+    fwrite(STDERR, "Form GTM compatibility toggle must default off\n"); exit(1);
 }
 echo "Native contact admin settings smoke tests passed\n";
