@@ -1,10 +1,10 @@
 # Matriz de paridad de medición TIBOX Leads → TIBOX Admin
 
-Base auditada: fuente original **TIBOX Leads 1.0.0** (tibox-leads.php + assets/tbx-leads.js), rama del plugin **TIBOX Admin 1.10.2 beta**, más assets/tibox-tracking.js y su módulo Actividad. Esta matriz describe emisiones de código, **no prueba que Google Tag Manager/GA4/Ads reciban o contabilicen cada evento**.
+Base auditada: fuente original **TIBOX Leads 1.0.0** (tibox-leads.php + assets/tbx-leads.js), rama del plugin **TIBOX Admin 1.10.3 beta**, más assets/tibox-tracking.js y su módulo Actividad. Esta matriz describe emisiones de código, **no prueba que Google Tag Manager/GA4/Ads reciban o contabilicen cada evento**.
 
 ## Eventos conocidos
 
-| Fuente / interacción | TIBOX Leads 1.0.0 | TIBOX Admin 1.10.2 | Condición de paridad / riesgo |
+| Fuente / interacción | TIBOX Leads 1.0.0 | TIBOX Admin 1.10.3 | Condición de paridad / riesgo |
 | --- | --- | --- | --- |
 | Click WhatsApp | `tbx_whatsapp_click` `{ubicacion,texto_boton,tbx_ref}` | Compatibilidad opt-in del botón y enlaces `tbx_whatsapp_click`; registro en Contactos `type=whatsapp` | Evento indica clic; referencia solo si el texto llegó a URL; sin unificación obligatoria |
 | Click teléfono | `tbx_phone_click` `{ubicacion,texto_boton}` | Mismo evento opt-in; Contactos `type=phone` | No es una llamada contestada |
@@ -67,3 +67,8 @@ Esto emite el evento GTM de compatibilidad si la opción está activa, pero **NO
 - Cambio primero en staging, luego producción con rollback inmediato (activar plugin anterior y apagar capturas nativas). **No eliminar datos ni tablas del plugin anterior.**
 
 **Estado:** matriz técnica y código preparados; falta inspección de GTM real, aceptación funcional y prueba de producción. No se garantiza paridad real solo con GitHub Actions.
+
+
+### Prearmado y continuidad de medición (1.10.3 beta)
+
+La opción `tbx_contacts_native_enabled` puede guardarse como `1` mientras TIBOX Leads sigue activo. Aun así `can_capture()` retorna false cuando detecta `tbx_leads_insert`, y no se registran formularios ni se encola el JS de compatibilidad GTM. Al desactivar el antiguo, la nueva captura ya preparada comienza a operar sin esperar una configuración posterior. Es un cambio **explícito y reversible** para staging, no una autorización a cambiar la instalación real.
