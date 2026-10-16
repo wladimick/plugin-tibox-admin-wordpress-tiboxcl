@@ -94,4 +94,33 @@ assert.equal(x.sent.length, 1, 'A WhatsApp widget should be recorded');
 assert.equal(x.sent[0].value.type, 'whatsapp');
 assert.equal(x.sent[0].value.ref, '', 'Do not invent a reference for opaque WA links');
 
+
+// La compatibilidad GTM debe estar APAGADA salvo opt-in explícito.
+x = session();
+const plainWA = el('https://wa.me/56912345678?text=Hola','WhatsApp');
+clicked(x, plainWA);
+assert.equal(x.window.dataLayer, undefined, 'Do not introduce GTM events by default');
+
+// Si se habilita, replicar solo los eventos de clic del antiguo plugin,
+// con referencia únicamente cuando efectivamente se añadió al mensaje.
+x = session(false, true, {gtm_legacy: true});
+const gtmWa = el('https://wa.me/56912345678?text=Hola', 'Pórticos');
+clicked(x, gtmWa);
+clicked(x, el('tel:+56212345678','Llamar'));
+clicked(x, el('mailto:ventas@prodata.cl','Correo'));
+clicked(x, el('https://wa.link/a1b2c3','Link corto'));
+assert.deepEqual(Array.from(x.window.dataLayer || [], item => item.event),
+  ['tbx_whatsapp_click','tbx_phone_click','tbx_email_click','tbx_whatsapp_click']);
+assert.equal(x.window.dataLayer[0].tbx_ref,x.sent[0].value.ref);
+assert.equal(x.window.dataLayer[3].tbx_ref,undefined, 'No fictitious reference for opaque links');
+assert.equal(x.window.dataLayer[0].texto_boton,'Pórticos');
+const count = x.window.dataLayer.length;
+clicked(x, gtmWa);
+assert.equal(x.window.dataLayer.length,count,'Deduplicated click must not emit extra GTM event');
+
+// El consentimiento bloquea también los eventos heredados de GTM.
+x = session(false, false, {gtm_legacy: true});
+assert.equal(x.window.dataLayer,undefined);
+x = session(true, true, {gtm_legacy: true});
+assert.equal(x.window.dataLayer,undefined);
 console.log('Native contact click client smoke tests passed');
