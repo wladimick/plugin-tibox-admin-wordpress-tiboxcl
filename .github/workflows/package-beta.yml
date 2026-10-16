@@ -26,6 +26,8 @@ jobs:
           node tests/vitals-smoke.cjs
           node tests/native-clicks-smoke.cjs
           node tests/native-form-conversions-smoke.cjs
+          node tests/landing-gtm-bridge-smoke.cjs
+          php tests/landing-gtm-html-smoke.php
           node tests/native-wa-button-smoke.cjs
           php tests/contacts-delete-csv-smoke.php
           php tests/unified-inbox-sources-smoke.php
