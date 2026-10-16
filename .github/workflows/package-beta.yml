@@ -28,6 +28,7 @@ jobs:
           node tests/native-form-conversions-smoke.cjs
           node tests/landing-gtm-bridge-smoke.cjs
           node tests/landing-gtm-shared-smoke.cjs
+          node tests/landing-gtm-xhr-smoke.cjs
           php tests/landing-gtm-html-smoke.php
           node tests/native-wa-button-smoke.cjs
           php tests/contacts-delete-csv-smoke.php
