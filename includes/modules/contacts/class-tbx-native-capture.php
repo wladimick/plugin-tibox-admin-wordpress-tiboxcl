@@ -567,8 +567,10 @@ final class TBX_Native_Contacts
         echo '<p>Este botón funciona independientemente de la captura directa de formularios. Puedes activarlo mientras TIBOX Leads sigue instalado: TIBOX Admin muestra un solo botón y TIBOX Leads conserva el registro de clics y las referencias WhatsApp.</p>';
         if (self::legacy_active()) {
             echo '<p class="tbx-muted"><strong>Convivencia:</strong> los ajustes del botón se administran aquí; el registro de clics sigue funcionando en el plugin antiguo hasta que migremos completamente la captura.</p>';
-        } elseif (!self::can_capture_clicks()) {
+        } elseif (!self::click_tracking_enabled()) {
             echo '<p class="tbx-muted"><strong>Atención:</strong> el botón abre WhatsApp, pero el registro individual de clics está desactivado. Puedes habilitarlo aquí sin activar la captura de formularios.</p>';
+        } else {
+            echo '<p class="tbx-muted"><strong>Seguimiento preparado:</strong> se registran los clics de visitantes. Los administradores con sesión iniciada no se contabilizan; prueba desde una ventana privada sin iniciar sesión.</p>';
         }
         if (isset($_GET['wa_saved'])) {
             $ok = sanitize_key(wp_unslash($_GET['wa_saved'])) === '1';
