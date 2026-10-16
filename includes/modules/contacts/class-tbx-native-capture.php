@@ -281,8 +281,6 @@ final class TBX_Native_Contacts
         if (isset(self::$seen[$idempotency])) {
             return false; // hooks duplicados en la misma solicitud.
         }
-        self::$seen[$idempotency] = true;
-
         $data = [
             'type' => 'form',
             'origin' => $origin,
@@ -298,7 +296,11 @@ final class TBX_Native_Contacts
             ...self::attribution(),
             ...TBX_Analytics_Context::classify((string) ($_SERVER['HTTP_USER_AGENT'] ?? '')),
         ];
-        return self::insert_native($data);
+        $saved = self::insert_native($data);
+        if ($saved) {
+            self::$seen[$idempotency] = true;
+        }
+        return $saved;
     }
 
     /**
@@ -428,7 +430,7 @@ final class TBX_Native_Contacts
         wp_enqueue_script(
             'tbx-native-form-gtm-compat',
             TBX_ADMIN_URL . 'assets/tibox-form-conversions.js',
-            [],
+            ['jquery'],
             (string) filemtime($file),
             ['in_footer' => true, 'strategy' => 'defer']
         );
